@@ -1,0 +1,32 @@
+{
+  "name": "revops",
+  "version": "0.0.0",
+  "private": true,
+  "description": "RevOps Pro — agent-native revenue operations platform",
+  "engines": {
+    "node": ">=20.18.0",
+    "pnpm": ">=10.0.0"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\" --ignore-path .gitignore",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\" --ignore-path .gitignore",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "db:generate": "pnpm --filter @revops/db generate",
+    "db:migrate": "pnpm --filter @revops/db migrate",
+    "db:push": "pnpm --filter @revops/db push",
+    "db:studio": "pnpm --filter @revops/db studio",
+    "db:seed": "pnpm --filter @revops/db seed"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "prettier": "^3.4.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  }
+}

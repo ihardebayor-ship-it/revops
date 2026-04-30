@@ -1,0 +1,22 @@
+{
+  "name": "@revops/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./env": "./src/env.ts",
+    "./brand": "./src/brand.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@revops/tooling": "workspace:*",
+    "typescript": "^5.7.0"
+  }
+}

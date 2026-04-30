@@ -1,0 +1,32 @@
+{
+  "name": "@revops/tooling",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./tsconfig.lib.json": "./tsconfig.lib.json",
+    "./tsconfig.next.json": "./tsconfig.next.json",
+    "./eslint.config.js": "./eslint.config.js",
+    "./tailwind.preset.ts": "./tailwind.preset.ts"
+  },
+  "files": [
+    "tsconfig.*.json",
+    "eslint.config.js",
+    "tailwind.preset.ts"
+  ],
+  "dependencies": {
+    "@eslint/js": "^9.17.0",
+    "@next/eslint-plugin-next": "^15.1.0",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.37.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^15.14.0",
+    "tailwindcss": "^4.0.0",
+    "typescript-eslint": "^8.18.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
