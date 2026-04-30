@@ -1,0 +1,31 @@
+{
+  "name": "@revops/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tools": "./src/tools/index.ts",
+    "./runtime": "./src/runtime/index.ts",
+    "./define-tool": "./src/define-tool.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@revops/auth": "workspace:*",
+    "@revops/db": "workspace:*",
+    "@revops/domain": "workspace:*",
+    "drizzle-orm": "^0.36.4",
+    "zod": "^3.24.0",
+    "zod-to-json-schema": "^3.24.1"
+  },
+  "devDependencies": {
+    "@revops/tooling": "workspace:*",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.8"
+  }
+}

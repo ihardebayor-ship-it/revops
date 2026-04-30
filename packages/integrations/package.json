@@ -1,0 +1,29 @@
+{
+  "name": "@revops/integrations",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./shared": "./src/shared/index.ts",
+    "./ghl": "./src/ghl/index.ts",
+    "./whop": "./src/whop/index.ts",
+    "./stripe": "./src/stripe/index.ts",
+    "./aircall": "./src/aircall/index.ts",
+    "./fathom": "./src/fathom/index.ts",
+    "./typeform": "./src/typeform/index.ts",
+    "./jotform": "./src/jotform/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@revops/config": "workspace:*",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@revops/tooling": "workspace:*",
+    "typescript": "^5.7.0"
+  }
+}

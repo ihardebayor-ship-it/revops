@@ -1,0 +1,26 @@
+{
+  "name": "@revops/auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./client": "./src/client.ts",
+    "./policy": "./src/policy.ts",
+    "./next-handler": "./src/next-handler.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@revops/config": "workspace:*",
+    "@revops/db": "workspace:*",
+    "better-auth": "^1.1.0"
+  },
+  "devDependencies": {
+    "@revops/tooling": "workspace:*",
+    "typescript": "^5.7.0"
+  }
+}

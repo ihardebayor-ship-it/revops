@@ -1,0 +1,28 @@
+{
+  "name": "@revops/jobs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./functions": "./src/functions/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@revops/agent": "workspace:*",
+    "@revops/auth": "workspace:*",
+    "@revops/db": "workspace:*",
+    "@revops/domain": "workspace:*",
+    "@revops/integrations": "workspace:*",
+    "inngest": "^3.30.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@revops/tooling": "workspace:*",
+    "typescript": "^5.7.0"
+  }
+}

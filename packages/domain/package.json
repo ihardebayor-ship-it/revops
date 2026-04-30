@@ -1,0 +1,32 @@
+{
+  "name": "@revops/domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./commissions": "./src/commissions/index.ts",
+    "./calls": "./src/calls/index.ts",
+    "./sales": "./src/sales/index.ts",
+    "./customers": "./src/customers/index.ts",
+    "./goals": "./src/goals/index.ts",
+    "./reconciliation": "./src/reconciliation/index.ts",
+    "./onboarding": "./src/onboarding/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@revops/auth": "workspace:*",
+    "@revops/db": "workspace:*",
+    "drizzle-orm": "^0.36.4",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@revops/tooling": "workspace:*",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.8"
+  }
+}
