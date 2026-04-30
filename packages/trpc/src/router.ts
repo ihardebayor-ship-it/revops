@@ -8,6 +8,8 @@ import { funnelRouter } from "./routers/funnel";
 import { dispositionsRouter } from "./routers/dispositions";
 import { callsRouter } from "./routers/calls";
 import { optinsRouter } from "./routers/optins";
+import { salesRouter } from "./routers/sales";
+import { reconciliationRouter } from "./routers/reconciliation";
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({ ok: true, ts: new Date().toISOString() })),
@@ -27,6 +29,8 @@ export const appRouter = router({
   dispositions: dispositionsRouter,
   calls: callsRouter,
   optins: optinsRouter,
+  sales: salesRouter,
+  reconciliation: reconciliationRouter,
 });
 
 export type AppRouter = typeof appRouter;

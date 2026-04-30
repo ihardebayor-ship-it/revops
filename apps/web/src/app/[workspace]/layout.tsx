@@ -34,7 +34,13 @@ export default async function WorkspaceLayout({
             Calls
           </a>
           <a
-            href={`/${slug}/dashboard/setter`}
+            href={`/${slug}/sales`}
+            className="rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-50"
+          >
+            Sales
+          </a>
+          <a
+            href={`/${slug}/dashboard/closer`}
             className="rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-50"
           >
             Dashboard
