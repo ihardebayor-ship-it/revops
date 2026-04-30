@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getDb } from "@revops/db/client";
 import { getServerEnv } from "@revops/config/env";
+import { bootstrapWorkspaceForUser } from "@revops/domain/onboarding";
 
 function buildAuth() {
   const env = getServerEnv();
@@ -17,6 +18,28 @@ function buildAuth() {
     session: {
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24,
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          // Runs after Better Auth's user-create transaction commits. We
+          // bootstrap a workspace for every brand-new user. Failures here do
+          // NOT roll back the user creation; failed bootstraps surface as
+          // a "no workspace" state that the onboarding route handles by
+          // re-running bootstrap.
+          after: async (user) => {
+            try {
+              await bootstrapWorkspaceForUser({
+                userId: user.id,
+                email: user.email,
+                displayName: user.name ?? null,
+              });
+            } catch (err) {
+              console.error("Workspace bootstrap failed for user", user.id, err);
+            }
+          },
+        },
+      },
     },
   });
 }

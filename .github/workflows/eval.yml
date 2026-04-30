@@ -1,0 +1,27 @@
+name: Agent evals
+
+# Phase 0 placeholder. Phase 1 M5 wires the actual eval suite + scoring.
+# When packages/agent/src/evals/runner.ts ships, this workflow will:
+#   - run the functional suite (10 tasks); fail if regression > 5%
+#   - run the refusal suite (5 tasks); fail on any regression (hard gate)
+#   - publish results to agent_eval_runs
+
+on:
+  pull_request:
+    paths:
+      - "packages/agent/**"
+      - "packages/jobs/**"
+  workflow_dispatch:
+
+jobs:
+  eval:
+    name: agent eval suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "Phase 0 placeholder. Eval runner lands in Phase 1 M5."
+          echo "Until then, this job exists to reserve the workflow slot and"
+          echo "establish the path-filter pattern so PRs touching agent/ or jobs/"
+          echo "automatically light up the eval column on the PR check page."

@@ -10,7 +10,7 @@ export type SystemPromptInput = {
   workspaceFacts: string[];
   threadSummary: string | null;
   retrievedFacts: string[];
-  availableTools: Tool[];
+  availableTools: readonly Tool[];
 };
 
 export function buildSystemPrompt(input: SystemPromptInput): string {

@@ -6,4 +6,5 @@ export {
   type AccessRole,
   type Action,
   type AuthContext,
+  type AuthorizableResource,
 } from "./policy";

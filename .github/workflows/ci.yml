@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel superseded runs to keep CI minutes inside the free tier.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: "20.18"
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  # Phase 0: typecheck + lint + test only. E2E + agent eval gates land in Phase 1 M5.
+  # The Zod env schema needs at least DATABASE_URL + secrets to satisfy validation
+  # in any code path that boots clients. Tests stub these via process.env.
+  DATABASE_URL: "postgres://stub:stub@localhost:5432/stub"
+  DATABASE_MIGRATION_URL: "postgres://stub:stub@localhost:5432/stub"
+  REVOPS_APP_DB_PASSWORD: "0123456789abcdef0123456789abcdef"
+  BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  BETTER_AUTH_URL: "http://localhost:3000"
+  TOKEN_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+jobs:
+  build:
+    name: typecheck · lint · test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint || true # Lint is informational in Phase 0; gating turns on in Phase 1
+
+      - name: Test
+        run: pnpm test || true # No tests yet; gating turns on as Phase 1 lands them

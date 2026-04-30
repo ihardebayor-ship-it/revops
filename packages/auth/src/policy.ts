@@ -80,9 +80,27 @@ const MANAGER_ACTIONS: ReadonlySet<Action> = new Set([
   "commission:adjust",
 ]);
 
-export function can(ctx: AuthContext, action: Action): boolean {
+export type AuthorizableResource = {
+  type: string;
+  id: string;
+  workspaceId?: string | null;
+  subAccountId?: string | null;
+};
+
+export function can(
+  ctx: AuthContext,
+  action: Action,
+  resource?: AuthorizableResource,
+): boolean {
   if (ctx.isSuperadmin) return true;
   if (!ctx.accessRole) return false;
+
+  // Resource-scoped check: when a target row is given, the calling user's
+  // workspace must match the row's. RLS catches misses at the database;
+  // this is the application-layer fail-safe.
+  if (resource && resource.workspaceId !== undefined && resource.workspaceId !== null) {
+    if (resource.workspaceId !== ctx.workspaceId) return false;
+  }
 
   if (READ_ACTIONS.has(action)) {
     return ctx.accessRole !== null;

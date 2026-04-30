@@ -15,7 +15,13 @@ const serverEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_URL: z.string().url().default("http://localhost:3000"),
 
-  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required (runtime, no BYPASSRLS)"),
+  DATABASE_MIGRATION_URL: z
+    .string()
+    .min(1, "DATABASE_MIGRATION_URL is required (migrations + bypassRls helper)"),
+  REVOPS_APP_DB_PASSWORD: z
+    .string()
+    .min(16, "REVOPS_APP_DB_PASSWORD must be at least 16 chars (embedded in role)"),
 
   BETTER_AUTH_SECRET: z.string().min(32, "BETTER_AUTH_SECRET must be at least 32 chars"),
   BETTER_AUTH_URL: z.string().url().default("http://localhost:3000"),

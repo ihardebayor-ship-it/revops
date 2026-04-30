@@ -10,12 +10,13 @@ const nextConfig: NextConfig = {
     "@revops/domain",
     "@revops/integrations",
     "@revops/jobs",
+    "@revops/observability",
     "@revops/trpc",
     "@revops/ui",
   ],
-  experimental: {
-    typedRoutes: true,
-  },
+  // typedRoutes off in Phase 0 — re-enable in Phase 1 M1 when the full
+  // route map (sign-in, sign-up, [workspace]/*) lands.
+  experimental: {},
 };
 
 export default nextConfig;

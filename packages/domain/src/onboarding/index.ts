@@ -5,3 +5,8 @@ export {
   type TopologyRoleSeed,
   type TopologyStageSeed,
 } from "./topology-presets";
+export {
+  bootstrapWorkspaceForUser,
+  type BootstrapInput,
+  type BootstrapResult,
+} from "./bootstrap";

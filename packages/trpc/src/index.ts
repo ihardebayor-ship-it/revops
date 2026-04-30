@@ -6,3 +6,4 @@ export {
   authedProcedureWith,
 } from "./server";
 export { appRouter, type AppRouter } from "./router";
+export { buildAgentRouter } from "./agent-router";
