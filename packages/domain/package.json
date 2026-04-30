@@ -11,7 +11,9 @@
     "./customers": "./src/customers/index.ts",
     "./goals": "./src/goals/index.ts",
     "./reconciliation": "./src/reconciliation/index.ts",
-    "./onboarding": "./src/onboarding/index.ts"
+    "./onboarding": "./src/onboarding/index.ts",
+    "./funnel": "./src/funnel/index.ts",
+    "./tasks": "./src/tasks/index.ts"
   },
   "scripts": {
     "lint": "eslint .",
@@ -19,7 +21,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@revops/auth": "workspace:*",
     "@revops/db": "workspace:*",
     "drizzle-orm": "^0.36.4",
     "zod": "^3.24.0"

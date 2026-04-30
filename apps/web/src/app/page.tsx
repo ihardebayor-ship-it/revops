@@ -1,8 +1,38 @@
-import Link from "next/link";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { and, eq, isNull } from "drizzle-orm";
 import { Brand, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@revops/ui";
+import { getAuth } from "@revops/auth/server";
+import { bypassRls, schema } from "@revops/db/client";
 import { getBrand } from "~/lib/brand";
 
 export default async function HomePage() {
+  const auth = getAuth();
+  const session = await auth.api.getSession({ headers: await headers() });
+
+  // Authed users get sent to their last-active workspace's inbox.
+  if (session?.user) {
+    const slug = await bypassRls(async (db) => {
+      const rows = await db
+        .select({ slug: schema.workspaces.slug })
+        .from(schema.workspaces)
+        .innerJoin(schema.memberships, eq(schema.memberships.workspaceId, schema.workspaces.id))
+        .where(
+          and(
+            eq(schema.memberships.userId, session.user.id),
+            isNull(schema.workspaces.deletedAt),
+            isNull(schema.memberships.deletedAt),
+          ),
+        )
+        .limit(1);
+      return rows[0]?.slug ?? null;
+    });
+    if (slug) {
+      redirect(`/${slug}/inbox`);
+    }
+    redirect("/onboarding");
+  }
+
   const brand = await getBrand();
 
   return (
@@ -10,15 +40,15 @@ export default async function HomePage() {
       <header className="flex items-center justify-between">
         <Brand brand={brand} variant="wordmark" />
         <nav className="flex items-center gap-3 text-sm text-zinc-400">
-          <Link href="/sign-in" className="hover:text-zinc-100">
+          <a href="/sign-in" className="hover:text-zinc-100">
             Sign in
-          </Link>
-          <Link
+          </a>
+          <a
             href="/sign-up"
             className="rounded-md bg-blue-500 px-3 py-1.5 font-medium text-white hover:bg-blue-600"
           >
             Get started
-          </Link>
+          </a>
         </nav>
       </header>
 

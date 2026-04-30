@@ -35,9 +35,15 @@ importers:
       '@revops/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@revops/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@revops/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs
+      '@revops/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@revops/trpc':
         specifier: workspace:*
         version: link:../../packages/trpc
@@ -142,6 +148,9 @@ importers:
       '@revops/db':
         specifier: workspace:*
         version: link:../db
+      '@revops/domain':
+        specifier: workspace:*
+        version: link:../domain
       better-auth:
         specifier: ^1.1.0
         version: 1.6.9(@opentelemetry/api@1.9.1)(next@15.5.15(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@2.1.9(@types/node@22.19.17)(lightningcss@1.32.0))
@@ -199,9 +208,6 @@ importers:
 
   packages/domain:
     dependencies:
-      '@revops/auth':
-        specifier: workspace:*
-        version: link:../auth
       '@revops/db':
         specifier: workspace:*
         version: link:../db
@@ -255,12 +261,28 @@ importers:
       '@revops/integrations':
         specifier: workspace:*
         version: link:../integrations
+      drizzle-orm:
+        specifier: ^0.36.4
+        version: 0.36.4(@neondatabase/serverless@0.10.4)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(@types/react@19.2.14)(kysely@0.28.16)(postgres@3.4.9)(react@19.2.5)
       inngest:
         specifier: ^3.30.0
         version: 3.54.2(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(next@15.5.15(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(typescript@5.9.3)(zod@3.25.76)
       zod:
         specifier: ^3.24.0
         version: 3.25.76
+    devDependencies:
+      '@revops/tooling':
+        specifier: workspace:*
+        version: link:../tooling
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/observability:
+    dependencies:
+      '@revops/config':
+        specifier: workspace:*
+        version: link:../config
     devDependencies:
       '@revops/tooling':
         specifier: workspace:*
@@ -305,15 +327,27 @@ importers:
 
   packages/trpc:
     dependencies:
+      '@revops/agent':
+        specifier: workspace:*
+        version: link:../agent
       '@revops/auth':
         specifier: workspace:*
         version: link:../auth
       '@revops/db':
         specifier: workspace:*
         version: link:../db
+      '@revops/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@revops/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@trpc/server':
         specifier: ^11.0.0-rc.660
         version: 11.17.0(typescript@5.9.3)
+      drizzle-orm:
+        specifier: ^0.36.4
+        version: 0.36.4(@neondatabase/serverless@0.10.4)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(@types/react@19.2.14)(kysely@0.28.16)(postgres@3.4.9)(react@19.2.5)
       superjson:
         specifier: ^2.2.2
         version: 2.2.6

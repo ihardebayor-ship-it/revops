@@ -5,3 +5,5 @@ export * as customers from "./customers/index";
 export * as goals from "./goals/index";
 export * as reconciliation from "./reconciliation/index";
 export * as onboarding from "./onboarding/index";
+export * as funnel from "./funnel/index";
+export * as tasks from "./tasks/index";
