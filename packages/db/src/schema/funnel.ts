@@ -89,6 +89,30 @@ export const funnelEvents = pgTable(
   }),
 );
 
+// funnel_event_dedupe — append-only dedup ledger for funnel_events.
+// Idempotent webhook replay or duplicate event emission must not skew
+// analytics. The (entity_type, entity_id, stage_id, meta_hash) tuple is
+// the dedupe key; same payload twice = one row.
+export const funnelEventDedupe = pgTable(
+  "funnel_event_dedupe",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    stageId: uuid("stage_id").notNull().references(() => funnelStages.id, { onDelete: "cascade" }),
+    metaHash: text("meta_hash").notNull(),
+    funnelEventId: uuid("funnel_event_id").references(() => funnelEvents.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    dedupeUq: unique("funnel_event_dedupe_uq").on(t.entityType, t.entityId, t.stageId, t.metaHash),
+    workspaceIdx: index("funnel_event_dedupe_workspace_idx").on(t.workspaceId),
+  }),
+);
+
 // dispositions — workspace-configurable call/sale outcome taxonomy.
 export const dispositions = pgTable(
   "dispositions",

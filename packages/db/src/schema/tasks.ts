@@ -1,9 +1,11 @@
+import { sql } from "drizzle-orm";
 import {
   index,
   jsonb,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
@@ -36,6 +38,10 @@ export const tasks = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     completedBy: text("completed_by").references(() => user.id),
     agentOriginId: uuid("agent_origin_id"),
+    // unique_key dedupes auto-generated tasks (e.g. speed-to-lead SLA
+    // sweep upserts on `speed_to_lead:{optinId}`). Idempotent under retry
+    // and replay.
+    uniqueKey: text("unique_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     createdBy: text("created_by").references(() => user.id),
@@ -48,5 +54,15 @@ export const tasks = pgTable(
     ),
     dueIdx: index("tasks_due_idx").on(t.dueAt),
     relatedIdx: index("tasks_related_idx").on(t.relatedEntityType, t.relatedEntityId),
+    uniqueKeyUq: uniqueIndex("tasks_unique_key_uq")
+      .on(t.subAccountId, t.uniqueKey)
+      .where(sql`${t.uniqueKey} is not null`),
+    // Hot path: per-user inbox, ordered by due_at ascending.
+    inboxIdx: index("tasks_inbox_idx").on(
+      t.subAccountId,
+      t.assignedUserId,
+      t.status,
+      t.dueAt,
+    ),
   }),
 );

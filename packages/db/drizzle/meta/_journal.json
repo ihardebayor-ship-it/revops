@@ -8,6 +8,13 @@
       "when": 1777539770576,
       "tag": "0000_pink_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777550032789,
+      "tag": "0001_bitter_slayback",
+      "breakpoints": true
     }
   ]
 }

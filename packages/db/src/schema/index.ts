@@ -18,3 +18,4 @@ export * from "./forms";
 export * from "./audit";
 export * from "./webhooks";
 export * from "./agent";
+export * from "./commission-recipients";

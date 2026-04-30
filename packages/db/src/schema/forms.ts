@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   index,
   jsonb,
@@ -10,6 +11,7 @@ import {
 import { user } from "./auth";
 import { workspaces, subAccounts } from "./tenancy";
 import { dataSourceConnections } from "./data-sources";
+import { calls } from "./calls";
 
 export const optins = pgTable(
   "optins",
@@ -37,6 +39,14 @@ export const optins = pgTable(
     sourceIntegration: text("source_integration"),
     externalId: text("external_id"),
     submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull(),
+    // Phase 1 M2 speed-to-lead surface: when contact is made, the call is
+    // recorded here. The SLA sweep finds optins with NULL contacted_call_id
+    // past `workspace_settings.speedToLeadSlaSeconds` and creates a setter task.
+    contactedAt: timestamp("contacted_at", { withTimezone: true }),
+    contactedCallId: uuid("contacted_call_id").references(() => calls.id, {
+      onDelete: "set null",
+    }),
+    attributedSetterUserId: text("attributed_setter_user_id").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     createdBy: text("created_by").references(() => user.id),
   },
@@ -44,6 +54,10 @@ export const optins = pgTable(
     externalUq: unique("optins_external_uq").on(t.sourceIntegration, t.externalId),
     subEmailIdx: index("optins_sub_email_idx").on(t.subAccountId, t.email),
     submittedIdx: index("optins_submitted_idx").on(t.submittedAt),
+    // Hot path: SLA sweep finds optins with no contact past the SLA window.
+    slaPendingIdx: index("optins_sla_pending_idx")
+      .on(t.subAccountId, t.submittedAt)
+      .where(sql`${t.contactedCallId} is null`),
   }),
 );
 
