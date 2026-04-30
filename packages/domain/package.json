@@ -13,7 +13,9 @@
     "./reconciliation": "./src/reconciliation/index.ts",
     "./onboarding": "./src/onboarding/index.ts",
     "./funnel": "./src/funnel/index.ts",
-    "./tasks": "./src/tasks/index.ts"
+    "./tasks": "./src/tasks/index.ts",
+    "./roles": "./src/roles/index.ts",
+    "./dispositions": "./src/dispositions/index.ts"
   },
   "scripts": {
     "lint": "eslint .",

@@ -8,6 +8,11 @@
     "./brand": "./src/brand.tsx",
     "./button": "./src/button.tsx",
     "./card": "./src/card.tsx",
+    "./page-header": "./src/page-header.tsx",
+    "./empty-state": "./src/empty-state.tsx",
+    "./pill": "./src/pill.tsx",
+    "./time": "./src/time.tsx",
+    "./money": "./src/money.tsx",
     "./utils": "./src/utils.ts",
     "./globals.css": "./src/globals.css"
   },

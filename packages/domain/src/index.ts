@@ -7,3 +7,5 @@ export * as reconciliation from "./reconciliation/index";
 export * as onboarding from "./onboarding/index";
 export * as funnel from "./funnel/index";
 export * as tasks from "./tasks/index";
+export * as roles from "./roles/index";
+export * as dispositions from "./dispositions/index";
