@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { tasks as tasksDomain } from "@revops/domain";
+import { channelNames, emit, events } from "@revops/realtime";
 import { router, authedProcedure } from "../server";
 
 export const tasksRouter = router({
@@ -67,7 +68,7 @@ export const tasksRouter = router({
       // create an unassigned task (manager queue).
       const assignedUserId =
         input.assignedUserId === undefined ? ctx.user.userId : input.assignedUserId;
-      return tasksDomain.createTask(ctx.db, {
+      const result = await tasksDomain.createTask(ctx.db, {
         workspaceId: ctx.user.workspaceId,
         subAccountId: ctx.user.subAccountId,
         kind: input.kind,
@@ -81,19 +82,37 @@ export const tasksRouter = router({
         dueAt: input.dueAt ? new Date(input.dueAt) : null,
         createdBy: ctx.user.userId,
       });
+      if (assignedUserId) {
+        // Fire-and-forget; emit() swallows errors so realtime hiccups never
+        // break the originating mutation.
+        void emit(
+          channelNames.inboxFor(ctx.user.workspaceId, assignedUserId),
+          events.taskCreated,
+          { taskId: result.id, kind: input.kind, title: input.title },
+        );
+      }
+      return result;
     }),
 
   complete: authedProcedure
     .input(z.object({ taskId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.user.subAccountId) {
+      if (!ctx.user.subAccountId || !ctx.user.workspaceId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Sub-account required" });
       }
-      return tasksDomain.completeTask(ctx.db, {
+      const result = await tasksDomain.completeTask(ctx.db, {
         taskId: input.taskId,
         completedBy: ctx.user.userId,
         subAccountId: ctx.user.subAccountId,
       });
+      if (result.completed) {
+        void emit(
+          channelNames.inboxFor(ctx.user.workspaceId, ctx.user.userId),
+          events.taskCompleted,
+          { taskId: input.taskId },
+        );
+      }
+      return result;
     }),
 
   snooze: authedProcedure
@@ -104,13 +123,21 @@ export const tasksRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.user.subAccountId) {
+      if (!ctx.user.subAccountId || !ctx.user.workspaceId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Sub-account required" });
       }
-      return tasksDomain.snoozeTask(ctx.db, {
+      const result = await tasksDomain.snoozeTask(ctx.db, {
         taskId: input.taskId,
         snoozedUntil: new Date(input.snoozedUntil),
         subAccountId: ctx.user.subAccountId,
       });
+      if (result.snoozed) {
+        void emit(
+          channelNames.inboxFor(ctx.user.workspaceId, ctx.user.userId),
+          events.taskSnoozed,
+          { taskId: input.taskId, snoozedUntil: input.snoozedUntil },
+        );
+      }
+      return result;
     }),
 });

@@ -18,6 +18,7 @@
     "@revops/domain": "workspace:*",
     "@revops/jobs": "workspace:*",
     "@revops/observability": "workspace:*",
+    "@revops/realtime": "workspace:*",
     "@revops/trpc": "workspace:*",
     "@revops/ui": "workspace:*",
     "@trpc/client": "^11.0.0-rc.660",

@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
     "@revops/integrations",
     "@revops/jobs",
     "@revops/observability",
+    "@revops/realtime",
     "@revops/trpc",
     "@revops/ui",
   ],
