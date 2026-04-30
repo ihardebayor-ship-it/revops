@@ -1,4 +1,4 @@
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 import postgres, { type Sql } from "postgres";
 import { getServerEnv } from "@revops/config/env";
@@ -41,7 +41,11 @@ export function getDb() {
   return appDb;
 }
 
-export type Db = ReturnType<typeof getDb>;
+// Db accepts both the top-level pool-bound client and a transaction (the
+// drizzle transaction type is structurally compatible for query methods
+// but lacks `$client`). Domain helpers take Db so they can be called from
+// within a withTenant transaction or directly off the pool.
+export type Db = PostgresJsDatabase<typeof schema>;
 export { schema };
 
 // ─── Tenant scope ────────────────────────────────────────────────────────

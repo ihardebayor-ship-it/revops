@@ -15,7 +15,8 @@
     "./funnel": "./src/funnel/index.ts",
     "./tasks": "./src/tasks/index.ts",
     "./roles": "./src/roles/index.ts",
-    "./dispositions": "./src/dispositions/index.ts"
+    "./dispositions": "./src/dispositions/index.ts",
+    "./optins": "./src/optins/index.ts"
   },
   "scripts": {
     "lint": "eslint .",

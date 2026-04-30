@@ -28,6 +28,18 @@ export default async function WorkspaceLayout({
             Inbox
           </a>
           <a
+            href={`/${slug}/calls`}
+            className="rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-50"
+          >
+            Calls
+          </a>
+          <a
+            href={`/${slug}/dashboard/setter`}
+            className="rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-50"
+          >
+            Dashboard
+          </a>
+          <a
             href={`/${slug}/agent`}
             className="rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-50"
           >

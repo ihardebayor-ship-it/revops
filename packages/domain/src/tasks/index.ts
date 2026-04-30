@@ -4,7 +4,7 @@
 // speed-to-lead SLA sweep. Phase 1 M5 will add agent-suggestion tasks
 // (kind='agent_suggestion') from `proposeCommissionLink`.
 
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { type Db, schema } from "@revops/db/client";
 
 type TaskKind =
@@ -85,7 +85,12 @@ export async function upsertTaskByUniqueKey(db: Db, input: CreateTaskInput & { u
       agentOriginId: input.agentOriginId ?? null,
       createdBy: input.createdBy ?? null,
     })
-    .onConflictDoNothing({ target: [schema.tasks.subAccountId, schema.tasks.uniqueKey] })
+    .onConflictDoNothing({
+      target: [schema.tasks.subAccountId, schema.tasks.uniqueKey],
+      // Mirror the partial-index WHERE so Postgres can pick the right unique
+      // constraint. tasks_unique_key_uq is `WHERE unique_key IS NOT NULL`.
+      where: isNotNull(schema.tasks.uniqueKey),
+    })
     .returning({ id: schema.tasks.id });
   return { id: row?.id ?? null, inserted: !!row };
 }

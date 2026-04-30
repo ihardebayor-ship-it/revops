@@ -6,6 +6,8 @@ import { onboardingRouter } from "./routers/onboarding";
 import { rolesRouter } from "./routers/roles";
 import { funnelRouter } from "./routers/funnel";
 import { dispositionsRouter } from "./routers/dispositions";
+import { callsRouter } from "./routers/calls";
+import { optinsRouter } from "./routers/optins";
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({ ok: true, ts: new Date().toISOString() })),
@@ -23,6 +25,8 @@ export const appRouter = router({
   roles: rolesRouter,
   funnel: funnelRouter,
   dispositions: dispositionsRouter,
+  calls: callsRouter,
+  optins: optinsRouter,
 });
 
 export type AppRouter = typeof appRouter;
