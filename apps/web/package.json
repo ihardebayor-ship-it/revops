@@ -16,6 +16,7 @@
     "@revops/config": "workspace:*",
     "@revops/db": "workspace:*",
     "@revops/domain": "workspace:*",
+    "@revops/integrations": "workspace:*",
     "@revops/jobs": "workspace:*",
     "@revops/observability": "workspace:*",
     "@revops/realtime": "workspace:*",

@@ -60,6 +60,15 @@ const serverEnvSchema = z.object({
   TOKEN_ENCRYPTION_KEY: z
     .string()
     .min(64, "TOKEN_ENCRYPTION_KEY must be 64 hex chars (openssl rand -hex 32)"),
+
+  GOHIGHLEVEL_CLIENT_ID: z.string().optional(),
+  GOHIGHLEVEL_CLIENT_SECRET: z.string().optional(),
+  GHL_WEBHOOK_SECRET: z.string().optional(),
+
+  AIRCALL_WEBHOOK_TOKEN: z.string().optional(),
+
+  FATHOM_WEBHOOK_SECRET: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
 });
 
 const clientEnvSchema = z.object({

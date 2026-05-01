@@ -38,6 +38,9 @@ importers:
       '@revops/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@revops/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       '@revops/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs

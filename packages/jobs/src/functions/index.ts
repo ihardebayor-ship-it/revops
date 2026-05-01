@@ -4,6 +4,8 @@ import { commissionRecompute } from "./commission-recompute";
 import { speedToLeadSlaSweep } from "../schedules/speed-to-lead-sla-sweep";
 import { commissionHoldRelease } from "../schedules/commission-hold-release";
 import { oauthRefresh } from "../workflows/oauth-refresh";
+import { ghlBackfill } from "../workflows/ghl-backfill";
+import { ghlWebhookHandler } from "../webhooks/ghl-handler";
 
 export const functions = [
   healthCheck,
@@ -12,6 +14,8 @@ export const functions = [
   speedToLeadSlaSweep,
   commissionHoldRelease,
   oauthRefresh,
+  ghlBackfill,
+  ghlWebhookHandler,
 ];
 export {
   healthCheck,
@@ -20,4 +24,6 @@ export {
   speedToLeadSlaSweep,
   commissionHoldRelease,
   oauthRefresh,
+  ghlBackfill,
+  ghlWebhookHandler,
 };
