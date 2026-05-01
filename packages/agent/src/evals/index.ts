@@ -19,6 +19,7 @@ export {
 export {
   reconciliationSuite,
   inboxSuite,
+  commissionQuestionsSuite,
   refusalSuite,
   ALL_SUITES,
 } from "./suites";

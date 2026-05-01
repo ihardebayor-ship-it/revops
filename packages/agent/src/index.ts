@@ -22,6 +22,7 @@ export {
   ALL_SUITES,
   reconciliationSuite,
   inboxSuite,
+  commissionQuestionsSuite,
   refusalSuite,
   toolCallExact,
   toolCalled,
