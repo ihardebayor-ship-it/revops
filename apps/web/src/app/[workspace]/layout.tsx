@@ -58,6 +58,12 @@ export default async function WorkspaceLayout({
             Agent
           </a>
           <a
+            href={`/${slug}/integrations`}
+            className="rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-50"
+          >
+            Integrations
+          </a>
+          <a
             href={`/${slug}/settings/roles`}
             className="rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-50"
           >
