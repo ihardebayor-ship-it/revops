@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   date,
   index,
@@ -14,7 +15,7 @@ import { user } from "./auth";
 import { workspaces, subAccounts } from "./tenancy";
 import { sales, paymentPlanInstallments } from "./sales";
 import { salesRoles, salesRoleVersions } from "./roles";
-import { commissionRuleTypeEnum, commissionStatusEnum, periodKindEnum } from "./enums";
+import { commissionRuleTypeEnum, commissionStatusEnum, installmentStatusEnum, periodKindEnum } from "./enums";
 
 export const commissionRules = pgTable(
   "commission_rules",
@@ -127,6 +128,8 @@ export const commissionEntries = pgTable(
     availableAt: timestamp("available_at", { withTimezone: true }),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     clawedBackAt: timestamp("clawed_back_at", { withTimezone: true }),
+    canceledAt: timestamp("canceled_at", { withTimezone: true }),
+    canceledReason: text("canceled_reason"),
     computedFrom: jsonb("computed_from").notNull().default({}).$type<Record<string, unknown>>(),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -138,5 +141,64 @@ export const commissionEntries = pgTable(
     statusIdx: index("commission_entries_status_idx").on(t.status),
     periodIdx: index("commission_entries_period_idx").on(t.periodId),
     availableIdx: index("commission_entries_available_idx").on(t.availableAt),
+    availableStatusIdx: index("commission_entries_available_status_idx")
+      .on(t.workspaceId, t.availableAt)
+      .where(sql`status = 'available'`),
+    upsertKeyUq: unique("commission_entries_upsert_key_uq").on(
+      t.saleId,
+      t.installmentId,
+      t.recipientUserId,
+      t.salesRoleId,
+      t.ruleId,
+    ),
+  }),
+);
+
+// Engine telemetry — one row per recompute run, scoped per sale.
+export const commissionRecomputeRuns = pgTable(
+  "commission_recompute_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    saleId: uuid("sale_id")
+      .notNull()
+      .references(() => sales.id, { onDelete: "cascade" }),
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+    rulesetHash: text("ruleset_hash"),
+    recipientCount: integer("recipient_count").notNull().default(0),
+    entryCount: integer("entry_count").notNull().default(0),
+    voidedCount: integer("voided_count").notNull().default(0),
+    durationMs: integer("duration_ms"),
+    error: text("error"),
+    triggeredBy: text("triggered_by"),
+  },
+  (t) => ({
+    saleIdx: index("commission_recompute_runs_sale_idx").on(t.saleId, t.runAt),
+    workspaceIdx: index("commission_recompute_runs_workspace_idx").on(t.workspaceId, t.runAt),
+  }),
+);
+
+// Installment transition timeline — lets the engine re-derive state
+// deterministically (e.g. "this entry was already paid before the rule
+// changed; do not rewrite").
+export const installmentStatusHistory = pgTable(
+  "installment_status_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    installmentId: uuid("installment_id")
+      .notNull()
+      .references(() => paymentPlanInstallments.id, { onDelete: "cascade" }),
+    prevStatus: installmentStatusEnum("prev_status"),
+    newStatus: installmentStatusEnum("new_status").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+    actorUserId: text("actor_user_id").references(() => user.id),
+  },
+  (t) => ({
+    installmentIdx: index("installment_status_history_installment_idx").on(
+      t.installmentId,
+      t.occurredAt,
+    ),
   }),
 );

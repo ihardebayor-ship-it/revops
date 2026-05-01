@@ -361,6 +361,9 @@ importers:
       '@revops/domain':
         specifier: workspace:*
         version: link:../domain
+      '@revops/jobs':
+        specifier: workspace:*
+        version: link:../jobs
       '@revops/observability':
         specifier: workspace:*
         version: link:../observability

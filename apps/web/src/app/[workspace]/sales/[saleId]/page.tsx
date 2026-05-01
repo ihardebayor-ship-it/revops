@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { withTenant, schema } from "@revops/db/client";
 import { sales as salesDomain, reconciliation as reconDomain } from "@revops/domain";
 import { Money, PageHeader, Pill, Time } from "@revops/ui";
@@ -58,12 +58,36 @@ export default async function SaleDetailPage({
         )[0] ?? null
       : null;
 
-    return { sale, recipients, installments, customer, suggestions, linkedCall };
+    const entries = await db
+      .select({
+        id: schema.commissionEntries.id,
+        installmentId: schema.commissionEntries.installmentId,
+        recipientUserId: schema.commissionEntries.recipientUserId,
+        amount: schema.commissionEntries.amount,
+        currency: schema.commissionEntries.currency,
+        status: schema.commissionEntries.status,
+        pendingUntil: schema.commissionEntries.pendingUntil,
+        availableAt: schema.commissionEntries.availableAt,
+        paidAt: schema.commissionEntries.paidAt,
+        clawedBackAt: schema.commissionEntries.clawedBackAt,
+      })
+      .from(schema.commissionEntries)
+      .where(eq(schema.commissionEntries.saleId, saleId))
+      .orderBy(asc(schema.commissionEntries.installmentId));
+
+    return { sale, recipients, installments, customer, suggestions, linkedCall, entries };
   });
 
   if (!detail) notFound();
 
-  const { sale, recipients, installments, customer, suggestions, linkedCall } = detail;
+  const { sale, recipients, installments, customer, suggestions, linkedCall, entries } = detail;
+  const entryStatusVariant: Record<string, "info" | "positive" | "won" | "danger" | "neutral"> = {
+    pending: "info",
+    available: "positive",
+    paid: "won",
+    clawed_back: "danger",
+    voided: "neutral",
+  };
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -119,6 +143,45 @@ export default async function SaleDetailPage({
                   {Math.round(Number(r.sharePct) * 100)}% share
                 </span>
                 <Pill>{r.status}</Pill>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-medium text-zinc-300">
+          Commission entries · {entries.length}
+        </h2>
+        {entries.length === 0 ? (
+          <p className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-400">
+            Engine has not produced entries yet — they appear seconds after sale creation.
+          </p>
+        ) : (
+          <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
+            {entries.map((e) => (
+              <li
+                key={e.id}
+                className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-sm"
+              >
+                <span className="col-span-3 font-mono text-xs text-zinc-500">
+                  {e.recipientUserId.slice(0, 8)}
+                </span>
+                <span className="col-span-3 text-zinc-100">
+                  <Money amount={e.amount} currency={e.currency} />
+                </span>
+                <span className="col-span-3">
+                  <Pill variant={entryStatusVariant[e.status] ?? "neutral"}>
+                    {e.status.replace("_", " ")}
+                  </Pill>
+                </span>
+                <span className="col-span-3 text-right text-xs text-zinc-500">
+                  {e.status === "pending" && e.pendingUntil ? (
+                    <>Holds until <Time value={e.pendingUntil} /></>
+                  ) : e.availableAt ? (
+                    <Time value={e.availableAt} />
+                  ) : null}
+                </span>
               </li>
             ))}
           </ul>

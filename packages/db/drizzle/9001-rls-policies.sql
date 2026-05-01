@@ -57,6 +57,7 @@ DECLARE
     'funnel_stages', 'funnel_event_dedupe',
     'dispositions', 'customers',
     'commission_rules', 'commission_periods',
+    'commission_recompute_runs',
     'goals',
     'data_sources',
     'agent_threads', 'agent_facts',
@@ -125,6 +126,32 @@ BEGIN
         )
     $p$, child_table, parent_table, child_table, fk_col, parent_table, child_table, fk_col);
   END LOOP;
+
+  -- 2b-bis. installment_status_history → via payment_plan_installments → sales.
+  ALTER TABLE installment_status_history ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE installment_status_history FORCE ROW LEVEL SECURITY;
+  DROP POLICY IF EXISTS tenant_isolation ON installment_status_history;
+  CREATE POLICY tenant_isolation ON installment_status_history
+    USING (
+      app_is_superadmin()
+      OR EXISTS (
+        SELECT 1
+        FROM payment_plan_installments i
+        JOIN sales s ON s.id = i.sale_id
+        WHERE i.id = installment_status_history.installment_id
+          AND s.workspace_id = app_current_workspace_id()
+      )
+    )
+    WITH CHECK (
+      app_is_superadmin()
+      OR EXISTS (
+        SELECT 1
+        FROM payment_plan_installments i
+        JOIN sales s ON s.id = i.sale_id
+        WHERE i.id = installment_status_history.installment_id
+          AND s.workspace_id = app_current_workspace_id()
+      )
+    );
 
   -- 2c. workspaces: scope by id, not workspace_id.
   ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;

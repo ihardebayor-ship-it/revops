@@ -19,6 +19,7 @@
     "@revops/auth": "workspace:*",
     "@revops/db": "workspace:*",
     "@revops/domain": "workspace:*",
+    "@revops/jobs": "workspace:*",
     "@revops/observability": "workspace:*",
     "@revops/realtime": "workspace:*",
     "@trpc/server": "^11.0.0-rc.660",

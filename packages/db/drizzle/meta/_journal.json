@@ -15,6 +15,13 @@
       "when": 1777550032789,
       "tag": "0001_bitter_slayback",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777595941505,
+      "tag": "0002_graceful_retro_girl",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,7 @@ import { callsRouter } from "./routers/calls";
 import { optinsRouter } from "./routers/optins";
 import { salesRouter } from "./routers/sales";
 import { reconciliationRouter } from "./routers/reconciliation";
+import { commissionsRouter } from "./routers/commissions";
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({ ok: true, ts: new Date().toISOString() })),
@@ -31,6 +32,7 @@ export const appRouter = router({
   optins: optinsRouter,
   sales: salesRouter,
   reconciliation: reconciliationRouter,
+  commissions: commissionsRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { sales as salesDomain } from "@revops/domain";
+import { inngest } from "@revops/jobs";
 import { router, authedProcedure } from "../server";
 
 const recipientSchema = z.object({
@@ -85,7 +86,7 @@ export const salesRouter = router({
           ? { ...ps, firstInstallmentDate: new Date(ps.firstInstallmentDate) }
           : ps
         : undefined;
-      return salesDomain.createSale(ctx.db, {
+      const result = await salesDomain.createSale(ctx.db, {
         workspaceId: ctx.user.workspaceId,
         subAccountId: ctx.user.subAccountId,
         customerEmail: input.customerEmail,
@@ -101,6 +102,11 @@ export const salesRouter = router({
         paymentProcessor: input.paymentProcessor ?? null,
         createdBy: ctx.user.userId,
       });
+      await inngest.send({
+        name: "commission.recompute.requested",
+        data: { saleId: result.saleId, reason: "sale.created" },
+      });
+      return result;
     }),
 
   linkToCall: authedProcedure
@@ -109,13 +115,18 @@ export const salesRouter = router({
       if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
         throw new TRPCError({ code: "BAD_REQUEST" });
       }
-      return salesDomain.linkToCall(ctx.db, {
+      const result = await salesDomain.linkToCall(ctx.db, {
         saleId: input.saleId,
         callId: input.callId,
         workspaceId: ctx.user.workspaceId,
         subAccountId: ctx.user.subAccountId,
         actorUserId: ctx.user.userId,
       });
+      await inngest.send({
+        name: "commission.recompute.requested",
+        data: { saleId: input.saleId, reason: "sale.linked_to_call" },
+      });
+      return result;
     }),
 
   unlinkFromCall: authedProcedure
@@ -132,9 +143,14 @@ export const salesRouter = router({
     .input(z.object({ saleId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      return salesDomain.softDeleteSale(ctx.db, {
+      const result = await salesDomain.softDeleteSale(ctx.db, {
         saleId: input.saleId,
         workspaceId: ctx.user.workspaceId,
       });
+      await inngest.send({
+        name: "commission.recompute.requested",
+        data: { saleId: input.saleId, reason: "sale.deleted" },
+      });
+      return result;
     }),
 });
