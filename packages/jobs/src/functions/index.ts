@@ -7,6 +7,7 @@ import { oauthRefresh } from "../workflows/oauth-refresh";
 import { ghlBackfill } from "../workflows/ghl-backfill";
 import { ghlWebhookHandler } from "../webhooks/ghl-handler";
 import { aircallWebhookHandler } from "../webhooks/aircall-handler";
+import { fathomWebhookHandler } from "../webhooks/fathom-handler";
 
 export const functions = [
   healthCheck,
@@ -18,6 +19,7 @@ export const functions = [
   ghlBackfill,
   ghlWebhookHandler,
   aircallWebhookHandler,
+  fathomWebhookHandler,
 ];
 export {
   healthCheck,
@@ -29,4 +31,5 @@ export {
   ghlBackfill,
   ghlWebhookHandler,
   aircallWebhookHandler,
+  fathomWebhookHandler,
 };

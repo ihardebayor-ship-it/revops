@@ -7,3 +7,9 @@ export {
   type RefreshArgs,
   type RefreshResult,
 } from "./oauth";
+export {
+  embedTexts,
+  EMBEDDING_MODEL,
+  EMBEDDING_DIM,
+  type EmbeddingResult,
+} from "./embeddings";
