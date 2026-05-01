@@ -44,7 +44,10 @@ export type Action =
   | "commission:adjust"
   | "commission:rule:update"
   | "task:read"
+  | "task:create"
   | "task:complete"
+  | "task:snooze"
+  | "task:assign"
   | "agent:invoke"
   | "agent:fact:write"
   | "audit:read"
@@ -128,7 +131,10 @@ export function can(
     case "sale:create":
     case "sale:update":
     case "sale:link":
+    case "task:create":
     case "task:complete":
+    case "task:snooze":
+    case "task:assign":
     case "agent:invoke":
     case "agent:fact:write":
       return true;
