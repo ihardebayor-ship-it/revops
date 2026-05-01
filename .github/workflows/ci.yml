@@ -15,7 +15,7 @@ env:
   NODE_VERSION: "20.18"
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-  # Phase 0: typecheck + lint + test only. E2E + agent eval gates land in Phase 1 M5.
+  # Phase 1 M5.6: typecheck + lint + Vitest gating. E2E (Playwright) + agent eval gates land separately.
   # The Zod env schema needs at least DATABASE_URL + secrets to satisfy validation
   # in any code path that boots clients. Tests stub these via process.env.
   DATABASE_URL: "postgres://stub:stub@localhost:5432/stub"
@@ -55,4 +55,4 @@ jobs:
         run: pnpm lint || true # Lint is informational in Phase 0; gating turns on in Phase 1
 
       - name: Test
-        run: pnpm test || true # No tests yet; gating turns on as Phase 1 lands them
+        run: pnpm test

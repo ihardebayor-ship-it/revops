@@ -16,3 +16,23 @@ export {
 } from "./runtime/anthropic";
 export { buildSystemPrompt, type SystemPromptInput } from "./prompts/system";
 export { EMBEDDING_DIM, type AgentFact, type FactKind, type FactScope } from "./memory/index";
+export {
+  runSuite,
+  evaluateGate,
+  ALL_SUITES,
+  reconciliationSuite,
+  inboxSuite,
+  refusalSuite,
+  toolCallExact,
+  toolCalled,
+  noForbiddenTools,
+  refusedToMutate,
+  finalTextIncludes,
+  type EvalSuite,
+  type EvalTask,
+  type EvalScorer,
+  type EvalScorerResult,
+  type EvalExecutor,
+  type SuiteRunResult,
+  type GateInput,
+} from "./evals/index";
