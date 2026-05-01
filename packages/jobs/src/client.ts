@@ -26,6 +26,34 @@ export type AppEvents = {
       reason: string;
     };
   };
+  "oauth.refresh.requested": {
+    data: {
+      connectionId: string;
+      provider: string;
+      reason: string;
+    };
+  };
+  "ghl.webhook.received": {
+    data: {
+      inboundEventId: string;
+    };
+  };
+  "aircall.webhook.received": {
+    data: {
+      inboundEventId: string;
+    };
+  };
+  "fathom.webhook.received": {
+    data: {
+      inboundEventId: string;
+    };
+  };
+  "ghl.backfill.requested": {
+    data: {
+      connectionId: string;
+      sinceDays: number;
+    };
+  };
 };
 
 export const inngest = new Inngest({

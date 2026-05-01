@@ -174,7 +174,10 @@ BEGIN
 
   -- 2e. Platform-only tables: superadmin gets all access; tenants get nothing.
   --     agent_eval_runs is platform-scoped (no per-workspace evals in MVP).
-  FOREACH t IN ARRAY ARRAY['platform_settings', 'platform_users', 'agent_eval_runs'] LOOP
+  --     webhook_inbound_events is the idempotency surface: dedup happens
+  --     before we know which workspace the event maps to, so it runs under
+  --     bypassRls in handlers and is invisible to tenants.
+  FOREACH t IN ARRAY ARRAY['platform_settings', 'platform_users', 'agent_eval_runs', 'webhook_inbound_events'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
     EXECUTE format('DROP POLICY IF EXISTS platform_admin ON %I', t);

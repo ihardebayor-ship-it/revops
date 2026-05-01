@@ -14,6 +14,7 @@ import { authorizeChannel } from "@revops/realtime/server";
 
 const WORKSPACE_INBOX_RE = /^private-workspace-([0-9a-f-]{36})-inbox-(.+)$/;
 const WORKSPACE_LEADERBOARD_RE = /^private-workspace-([0-9a-f-]{36})-leaderboard-/;
+const AGENT_THREAD_RE = /^private-agent-thread-([0-9a-f-]{36})$/;
 
 export async function POST(req: Request) {
   const session = await getAuth().api.getSession({ headers: req.headers });
@@ -85,8 +86,20 @@ export async function POST(req: Request) {
         return r.length > 0;
       });
     }
+  } else {
+    const threadMatch = channel.match(AGENT_THREAD_RE);
+    if (threadMatch) {
+      const [, threadId] = threadMatch;
+      authorized = await bypassRls(async (db) => {
+        const r = await db
+          .select({ userId: schema.agentThreads.userId })
+          .from(schema.agentThreads)
+          .where(eq(schema.agentThreads.id, threadId!))
+          .limit(1);
+        return r.length > 0 && r[0]!.userId === session.user.id;
+      });
+    }
   }
-  // Future: add agent-thread channel authz in Phase 1 M5.
 
   if (!authorized) {
     return new Response("Forbidden", { status: 403 });
