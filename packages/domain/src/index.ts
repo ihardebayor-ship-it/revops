@@ -1,4 +1,5 @@
 export * as commissions from "./commissions/index";
+export * as commissionRules from "./commission-rules/index";
 export * as calls from "./calls/index";
 export * as sales from "./sales/index";
 export * as customers from "./customers/index";
