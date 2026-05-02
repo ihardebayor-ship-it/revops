@@ -93,10 +93,19 @@ export default async function SaleDetailPage({
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
       <PageHeader
         title={sale.productName || "Sale"}
-        description={
-          customer ? `${customer.name || customer.email}` : "Customer details unavailable"
-        }
+        description={customer ? undefined : "Customer details unavailable"}
       />
+      {customer && (
+        <p className="-mt-3 text-sm">
+          <span className="text-zinc-500">Customer · </span>
+          <a
+            href={`/${slug}/customers/${customer.id}`}
+            className="text-zinc-100 hover:text-blue-400"
+          >
+            {customer.name || customer.email}
+          </a>
+        </p>
+      )}
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Stat label="Booked">
