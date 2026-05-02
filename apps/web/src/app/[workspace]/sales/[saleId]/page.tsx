@@ -5,6 +5,7 @@ import { sales as salesDomain, reconciliation as reconDomain } from "@revops/dom
 import { Money, PageHeader, Pill, Time } from "@revops/ui";
 import { resolveWorkspaceBySlug } from "~/lib/workspace";
 import { LinkerCard } from "./linker-card";
+import { RefundCard } from "./refund-card";
 
 export default async function SaleDetailPage({
   params,
@@ -131,6 +132,14 @@ export default async function SaleDetailPage({
           contactEmail: s.call.contactEmail ?? null,
           appointmentAt: s.call.appointmentAt ? s.call.appointmentAt.toISOString() : null,
         }))}
+      />
+
+      <RefundCard
+        saleId={sale.id}
+        bookedAmount={sale.bookedAmount}
+        currency={sale.currency}
+        refundStatus={sale.refundStatus}
+        refundedAmount={sale.refundedAmount}
       />
 
       <section>

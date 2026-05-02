@@ -153,4 +153,30 @@ export const salesRouter = router({
       });
       return result;
     }),
+
+  recordRefund: authedProcedure
+    .input(
+      z.object({
+        saleId: z.string().uuid(),
+        refundedAmount: z.string().regex(/^\d+(\.\d{1,2})?$/, "Decimal amount required"),
+        reason: z.string().max(500).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+      const result = await salesDomain.recordRefund(ctx.db, {
+        saleId: input.saleId,
+        workspaceId: ctx.user.workspaceId,
+        refundedAmount: input.refundedAmount,
+        reason: input.reason,
+        actorUserId: ctx.user.userId,
+      });
+      // Engine recompute keeps version snapshots + computed_from blobs in sync
+      // with the post-refund state for any future installments.
+      await inngest.send({
+        name: "commission.recompute.requested",
+        data: { saleId: input.saleId, reason: `sale.refunded.${result.refundType}` },
+      });
+      return result;
+    }),
 });

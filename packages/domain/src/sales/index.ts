@@ -510,5 +510,168 @@ export async function softDeleteSale(
   return { deleted: !!row };
 }
 
+// ─── Refunds ─────────────────────────────────────────────────────
+//
+// Phase 1 supports both full and partial refunds. The clawback math
+// runs in the same transaction as the sale-row update so the funnel
+// event + commission state are always consistent. Recompute is
+// dispatched by the caller (tRPC layer) after the transaction commits.
+//
+// Full refund:
+//   - sale.refundStatus → "issued", refundedAmount=bookedAmount
+//   - all installments → status="refunded"
+//   - all pending/available commission entries → "clawed_back" (clawedBackAt=now)
+//   - paid entries → "clawed_back" (the workspace handles cash recovery
+//     out-of-band; we record the obligation)
+//
+// Partial refund:
+//   - sale.refundStatus → "issued", refundedAmount=<input>
+//   - installments unchanged (engine recomputes proportionally on next run)
+//   - pending entries scale: amount *= (1 - refundPct)
+//   - available/paid entries are NOT modified (already earned). The
+//     proportional clawback on past entries is Phase 2 work — current
+//     scope flags the partial refund and adjusts forward-looking entries.
+
+export type RecordRefundInput = {
+  saleId: string;
+  workspaceId: string;
+  refundedAmount: string; // numeric(14,2)
+  reason?: string;
+  actorUserId: string;
+};
+
+export type RecordRefundResult = {
+  saleId: string;
+  refundType: "full" | "partial";
+  installmentsMarkedRefunded: number;
+  entriesClawedBack: number;
+  entriesAdjusted: number;
+};
+
+export async function recordRefund(
+  db: Db,
+  input: RecordRefundInput,
+): Promise<RecordRefundResult> {
+  return db.transaction(async (tx) => {
+    const [sale] = await tx
+      .select({
+        id: schema.sales.id,
+        bookedAmount: schema.sales.bookedAmount,
+        currency: schema.sales.currency,
+        subAccountId: schema.sales.subAccountId,
+        refundedAmount: schema.sales.refundedAmount,
+      })
+      .from(schema.sales)
+      .where(
+        and(
+          eq(schema.sales.id, input.saleId),
+          eq(schema.sales.workspaceId, input.workspaceId),
+          isNull(schema.sales.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!sale) throw new Error("Sale not found");
+
+    const booked = Number(sale.bookedAmount);
+    const refunded = Number(input.refundedAmount);
+    if (!(refunded > 0)) throw new Error("Refund amount must be > 0");
+    if (refunded > booked + 0.01) {
+      throw new Error("Refund amount cannot exceed booked amount");
+    }
+    const isFull = Math.abs(refunded - booked) < 0.01;
+
+    await tx
+      .update(schema.sales)
+      .set({
+        refundStatus: "issued",
+        refundedAmount: refunded.toFixed(2),
+        refundedAt: new Date(),
+        metadata: input.reason ? { refundReason: input.reason } : undefined,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.sales.id, sale.id));
+
+    let installmentsMarkedRefunded = 0;
+    let entriesClawedBack = 0;
+    let entriesAdjusted = 0;
+
+    if (isFull) {
+      // Mark all installments as refunded so the engine voids any future
+      // recompute attempts against them.
+      const updatedInst = await tx
+        .update(schema.paymentPlanInstallments)
+        .set({ status: "refunded", updatedAt: new Date() })
+        .where(eq(schema.paymentPlanInstallments.saleId, sale.id))
+        .returning({ id: schema.paymentPlanInstallments.id });
+      installmentsMarkedRefunded = updatedInst.length;
+
+      // Clawback every entry that isn't already terminal. Paid entries
+      // get clawedBackAt set so the rep's net-this-period reconciles to
+      // zero; the workspace recovers cash out-of-band.
+      const clawedBack = await tx
+        .update(schema.commissionEntries)
+        .set({
+          status: "clawed_back",
+          clawedBackAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.commissionEntries.saleId, sale.id),
+            sql`${schema.commissionEntries.status} IN ('pending', 'available', 'paid')`,
+          ),
+        )
+        .returning({ id: schema.commissionEntries.id });
+      entriesClawedBack = clawedBack.length;
+    } else {
+      // Partial refund: scale forward-looking pending entries.
+      // amount_new = amount_old * (1 - refundPct).
+      // Available / paid entries are NOT touched in Phase 1 — proportional
+      // historical clawback ships in Phase 2 once the engine has a
+      // clawback_window_days policy column to drive it.
+      const refundPct = refunded / booked;
+      const remainingPct = 1 - refundPct;
+      const adjusted = await tx
+        .update(schema.commissionEntries)
+        .set({
+          amount: sql`round(${schema.commissionEntries.amount} * ${remainingPct}, 2)`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.commissionEntries.saleId, sale.id),
+            eq(schema.commissionEntries.status, "pending"),
+          ),
+        )
+        .returning({ id: schema.commissionEntries.id });
+      entriesAdjusted = adjusted.length;
+    }
+
+    // Funnel event so dashboards / agent see the refund.
+    await emitFunnelEvent(tx, {
+      workspaceId: input.workspaceId,
+      subAccountId: sale.subAccountId,
+      entityType: "sale",
+      entityId: sale.id,
+      stageSlug: isFull ? "refunded" : "partially_refunded",
+      occurredAt: new Date(),
+      actorUserId: input.actorUserId,
+      meta: {
+        refundedAmount: refunded.toFixed(2),
+        bookedAmount: booked.toFixed(2),
+        reason: input.reason ?? null,
+      },
+    });
+
+    return {
+      saleId: sale.id,
+      refundType: isFull ? ("full" as const) : ("partial" as const),
+      installmentsMarkedRefunded,
+      entriesClawedBack,
+      entriesAdjusted,
+    };
+  });
+}
+
 // Suppress unused-import warning — `isNotNull` reserved for future filter variants.
 void isNotNull;
