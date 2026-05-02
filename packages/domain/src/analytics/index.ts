@@ -67,3 +67,10 @@ export {
   type AtRiskCustomer,
   type CohortRow,
 } from "./retention";
+
+export {
+  getActiveQuota,
+  currentMonth,
+  type QuotaArgs,
+  type ActiveQuota,
+} from "./quotas";
