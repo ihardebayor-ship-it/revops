@@ -52,7 +52,8 @@ DECLARE
   -- direct: tables that carry workspace_id directly.
   direct_tables text[] := ARRAY[
     -- workspace_only (no sub_account_id)
-    'sub_accounts', 'memberships', 'workspace_settings', 'tenant_settings',
+    'sub_accounts', 'memberships', 'workspace_invitations',
+    'workspace_settings', 'tenant_settings',
     'sales_roles', 'sales_role_assignments',
     'funnel_stages', 'funnel_event_dedupe',
     'dispositions', 'customers',

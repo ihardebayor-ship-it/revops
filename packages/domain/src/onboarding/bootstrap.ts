@@ -1,6 +1,89 @@
 import { randomBytes } from "node:crypto";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { bypassRls, schema } from "@revops/db/client";
 import { TOPOLOGY_PRESETS, type TopologyPresetSlug } from "./topology-presets";
+
+/**
+ * Try to claim a pending workspace invitation for the given email. If
+ * found, creates the membership + sales-role assignments and marks the
+ * invitation accepted. Returns the workspace context the user joined,
+ * or null if no pending invitation exists.
+ *
+ * Called from the auth bootstrap hook BEFORE bootstrapWorkspaceForUser:
+ * invited users join existing workspaces, they don't create new ones.
+ */
+export async function claimPendingInvitation(args: {
+  userId: string;
+  email: string;
+}): Promise<{ workspaceId: string; subAccountId: string | null } | null> {
+  return bypassRls(async (db) =>
+    db.transaction(async (tx) => {
+      const lower = args.email.toLowerCase().trim();
+      const [inv] = await tx
+        .select()
+        .from(schema.workspaceInvitations)
+        .where(
+          and(
+            eq(schema.workspaceInvitations.email, lower),
+            isNull(schema.workspaceInvitations.acceptedAt),
+            isNull(schema.workspaceInvitations.revokedAt),
+            gt(schema.workspaceInvitations.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+      if (!inv) return null;
+
+      let subAccountId = inv.subAccountId;
+      if (!subAccountId) {
+        const [sa] = await tx
+          .select({ id: schema.subAccounts.id })
+          .from(schema.subAccounts)
+          .where(eq(schema.subAccounts.workspaceId, inv.workspaceId))
+          .limit(1);
+        subAccountId = sa?.id ?? null;
+      }
+
+      await tx
+        .insert(schema.memberships)
+        .values({
+          userId: args.userId,
+          workspaceId: inv.workspaceId,
+          subAccountId,
+          accessRole: inv.accessRole,
+          invitedBy: inv.invitedBy,
+          acceptedAt: new Date(),
+        })
+        .onConflictDoNothing();
+
+      // Materialize sales-role assignments. Non-fatal if a role is missing
+      // (e.g. admin renamed roles between invite + accept) — partial
+      // assignment beats blocking the user from joining.
+      if (inv.salesRoleIds.length > 0 && subAccountId) {
+        for (const roleId of inv.salesRoleIds) {
+          await tx
+            .insert(schema.salesRoleAssignments)
+            .values({
+              userId: args.userId,
+              salesRoleId: roleId,
+              subAccountId,
+              workspaceId: inv.workspaceId,
+            })
+            .onConflictDoNothing();
+        }
+      }
+
+      await tx
+        .update(schema.workspaceInvitations)
+        .set({
+          acceptedAt: new Date(),
+          acceptedByUserId: args.userId,
+        })
+        .where(eq(schema.workspaceInvitations.id, inv.id));
+
+      return { workspaceId: inv.workspaceId, subAccountId };
+    }),
+  );
+}
 
 const DEFAULT_DISPOSITIONS = [
   { slug: "interested", label: "Interested", category: "positive", sortOrder: 10 },

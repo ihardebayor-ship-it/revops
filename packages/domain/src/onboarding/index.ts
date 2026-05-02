@@ -7,6 +7,7 @@ export {
 } from "./topology-presets";
 export {
   bootstrapWorkspaceForUser,
+  claimPendingInvitation,
   type BootstrapInput,
   type BootstrapResult,
 } from "./bootstrap";

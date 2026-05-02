@@ -86,6 +86,37 @@ export const subAccounts = pgTable(
   }),
 );
 
+// workspace_invitations — pending invites by email. When an invited user
+// signs up, the auth bootstrap hook claims the invitation: it creates
+// a membership (and optional sales_role_assignments) for the new user
+// in the inviting workspace and skips creating a fresh workspace.
+export const workspaceInvitations = pgTable(
+  "workspace_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    subAccountId: uuid("sub_account_id").references(() => subAccounts.id, {
+      onDelete: "cascade",
+    }),
+    email: text("email").notNull(),
+    accessRole: accessRoleEnum("access_role").notNull().default("contributor"),
+    salesRoleIds: jsonb("sales_role_ids").notNull().default([]).$type<string[]>(),
+    invitedBy: text("invited_by").references(() => user.id),
+    token: text("token").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    acceptedByUserId: text("accepted_by_user_id").references(() => user.id),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    workspaceEmailUq: unique("workspace_invitations_ws_email_uq").on(t.workspaceId, t.email),
+    emailIdx: index("workspace_invitations_email_idx").on(t.email),
+  }),
+);
+
 export const memberships = pgTable(
   "memberships",
   {

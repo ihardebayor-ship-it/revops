@@ -2,7 +2,10 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getDb } from "@revops/db/client";
 import { getServerEnv } from "@revops/config/env";
-import { bootstrapWorkspaceForUser } from "@revops/domain/onboarding";
+import {
+  bootstrapWorkspaceForUser,
+  claimPendingInvitation,
+} from "@revops/domain/onboarding";
 
 function buildAuth() {
   const env = getServerEnv();
@@ -29,6 +32,13 @@ function buildAuth() {
           // re-running bootstrap.
           after: async (user) => {
             try {
+              // Invited users join the inviting workspace; only fresh
+              // sign-ups bootstrap a new workspace.
+              const claimed = await claimPendingInvitation({
+                userId: user.id,
+                email: user.email,
+              });
+              if (claimed) return;
               await bootstrapWorkspaceForUser({
                 userId: user.id,
                 email: user.email,
