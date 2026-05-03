@@ -51,12 +51,37 @@ export default async function WorkspaceLayout({
           >
             Commissions
           </a>
-          <a
-            href={`/${slug}/dashboard/closer`}
-            className="rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-50"
-          >
-            Dashboard
-          </a>
+          <details className="group">
+            <summary className="cursor-pointer rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-50">
+              Dashboards
+            </summary>
+            <div className="ml-3 mt-1 flex flex-col gap-1 border-l border-zinc-800 pl-2">
+              <a
+                href={`/${slug}/dashboard/closer`}
+                className="rounded-md px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+              >
+                Closer
+              </a>
+              <a
+                href={`/${slug}/dashboard/setter`}
+                className="rounded-md px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+              >
+                Setter
+              </a>
+              <a
+                href={`/${slug}/dashboard/cx`}
+                className="rounded-md px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+              >
+                CX
+              </a>
+              <a
+                href={`/${slug}/dashboard/manager`}
+                className="rounded-md px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+              >
+                Manager
+              </a>
+            </div>
+          </details>
           <a
             href={`/${slug}/agent`}
             className="rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-50"
