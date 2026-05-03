@@ -13,12 +13,19 @@ import { snoozeTask } from "./tasks/snooze-task";
 import { recordFollowUp } from "./tasks/record-follow-up";
 import { proposeCommissionLink } from "./commissions/propose-commission-link";
 import { confirmFact, contradictFact } from "./memory/confirm-fact";
+import { getForecast } from "./analytics/get-forecast";
+import { getAtRiskCustomers } from "./analytics/get-at-risk-customers";
+import { getTeamLeaderboard } from "./analytics/get-team-leaderboard";
 import { type Tool } from "../define-tool";
 
 export const ALL_TOOLS: readonly Tool[] = [
   // Reads
   searchCalls,
   searchSales,
+  // Analytics (read-only, dashboard parity)
+  getForecast,
+  getAtRiskCustomers,
+  getTeamLeaderboard,
   // Mutations
   linkSaleToCall,
   unlinkSaleFromCall,
@@ -44,6 +51,9 @@ export function getReadOnlyTools(): readonly Tool[] {
 export {
   searchCalls,
   searchSales,
+  getForecast,
+  getAtRiskCustomers,
+  getTeamLeaderboard,
   linkSaleToCall,
   unlinkSaleFromCall,
   setCallDisposition,
