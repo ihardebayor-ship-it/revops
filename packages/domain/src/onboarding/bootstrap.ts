@@ -340,24 +340,27 @@ export async function applyTopologyPreset(args: {
 
       const preset = TOPOLOGY_PRESETS[args.preset];
 
-      // Wipe seeded taxonomies. Soft-delete where the schema supports it,
-      // hard-delete versions tables that cascade.
+      // Hard-delete the seeded taxonomies. Soft-delete doesn't work here
+      // because the unique constraints on (workspace_id, slug) for
+      // sales_roles / funnel_stages / dispositions don't honor
+      // deleted_at, so re-inserting the new preset's same slugs would
+      // collide. The safety check above already verified no sales /
+      // calls / commission_recipients exist; cascades on the versions +
+      // assignments tables clean up automatically.
       await tx
-        .update(schema.salesRoles)
-        .set({ deletedAt: new Date() })
+        .delete(schema.salesRoleAssignments)
+        .where(eq(schema.salesRoleAssignments.workspaceId, args.workspaceId));
+      await tx
+        .delete(schema.salesRoles)
         .where(eq(schema.salesRoles.workspaceId, args.workspaceId));
       await tx
-        .update(schema.funnelStages)
-        .set({ deletedAt: new Date() })
+        .delete(schema.funnelStages)
         .where(eq(schema.funnelStages.workspaceId, args.workspaceId));
-      // dispositions has no deletedAt; flip is_active=0 instead.
       await tx
-        .update(schema.dispositions)
-        .set({ isActive: 0 })
+        .delete(schema.dispositions)
         .where(eq(schema.dispositions.workspaceId, args.workspaceId));
       await tx
-        .update(schema.commissionRules)
-        .set({ deletedAt: new Date(), isActive: 0 })
+        .delete(schema.commissionRules)
         .where(eq(schema.commissionRules.workspaceId, args.workspaceId));
 
       // Re-seed roles + versions.
