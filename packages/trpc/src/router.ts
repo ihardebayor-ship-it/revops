@@ -13,6 +13,7 @@ import { reconciliationRouter } from "./routers/reconciliation";
 import { commissionsRouter } from "./routers/commissions";
 import { commissionRulesRouter } from "./routers/commission-rules";
 import { teamRouter } from "./routers/team";
+import { goalsRouter } from "./routers/goals";
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({ ok: true, ts: new Date().toISOString() })),
@@ -37,6 +38,7 @@ export const appRouter = router({
   commissions: commissionsRouter,
   commissionRules: commissionRulesRouter,
   team: teamRouter,
+  goals: goalsRouter,
 });
 
 export type AppRouter = typeof appRouter;

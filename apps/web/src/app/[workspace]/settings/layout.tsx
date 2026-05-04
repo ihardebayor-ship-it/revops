@@ -7,6 +7,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
       </header>
       <nav className="flex gap-1 border-b border-zinc-800 text-sm">
         <SettingsTab href="team">Team</SettingsTab>
+        <SettingsTab href="goals">Goals</SettingsTab>
         <SettingsTab href="roles">Roles</SettingsTab>
         <SettingsTab href="commissions">Commissions</SettingsTab>
         <SettingsTab href="funnel">Funnel</SettingsTab>

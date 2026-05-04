@@ -16,3 +16,4 @@ export async function POST() {
   const released = await bypassRls((db) => commissionsDomain.releaseAvailableEntries(db));
   return Response.json({ ok: true, released });
 }
+']'
