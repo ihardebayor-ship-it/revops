@@ -11,6 +11,9 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.17
+      next:
+        specifier: ^15.4.6
+        version: 15.5.15(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       prettier:
         specifier: ^3.4.0
         version: 3.8.3
@@ -4926,8 +4929,7 @@ snapshots:
 
   '@next/env@15.4.6': {}
 
-  '@next/env@15.5.15':
-    optional: true
+  '@next/env@15.5.15': {}
 
   '@next/eslint-plugin-next@15.5.15':
     dependencies:
@@ -7432,7 +7434,6 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - babel-plugin-macros
-    optional: true
 
   node-domexception@1.0.0: {}
 
