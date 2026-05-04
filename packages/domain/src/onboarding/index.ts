@@ -8,6 +8,7 @@ export {
 export {
   bootstrapWorkspaceForUser,
   claimPendingInvitation,
+  applyTopologyPreset,
   type BootstrapInput,
   type BootstrapResult,
 } from "./bootstrap";

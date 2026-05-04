@@ -284,3 +284,180 @@ export async function bootstrapWorkspaceForUser(input: BootstrapInput): Promise<
     }),
   );
 }
+
+// ─── Onboarding helpers ──────────────────────────────────────────
+
+/**
+ * Switch a workspace's topology preset, but only if no real activity
+ * has happened yet. Wipes seeded sales_roles / funnel_stages /
+ * dispositions / commission_rules and re-seeds from the new preset.
+ *
+ * Refuses to run if any sales / calls / commission_recipients exist.
+ * Returns { applied: false, reason } when blocked so the UI can
+ * explain why instead of erroring out.
+ */
+export async function applyTopologyPreset(args: {
+  workspaceId: string;
+  preset: TopologyPresetSlug;
+  actorUserId: string;
+}): Promise<
+  | { applied: true; preset: TopologyPresetSlug }
+  | { applied: false; reason: string }
+> {
+  return bypassRls(async (db) =>
+    db.transaction(async (tx) => {
+      const [ws] = await tx
+        .select({
+          id: schema.workspaces.id,
+          currentPreset: schema.workspaces.topologyPreset,
+        })
+        .from(schema.workspaces)
+        .where(eq(schema.workspaces.id, args.workspaceId))
+        .limit(1);
+      if (!ws) return { applied: false as const, reason: "Workspace not found." };
+      if (ws.currentPreset === args.preset) {
+        return { applied: true as const, preset: args.preset };
+      }
+
+      // Refuse re-bootstrap if real activity exists.
+      const [salesCount] = await tx
+        .select({ n: schema.sales.id })
+        .from(schema.sales)
+        .where(eq(schema.sales.workspaceId, args.workspaceId))
+        .limit(1);
+      const [callCount] = await tx
+        .select({ n: schema.calls.id })
+        .from(schema.calls)
+        .where(eq(schema.calls.workspaceId, args.workspaceId))
+        .limit(1);
+      if (salesCount || callCount) {
+        return {
+          applied: false as const,
+          reason:
+            "Workspace already has activity. Topology preset can't be swapped wholesale once data exists — edit roles / commissions / funnel individually instead.",
+        };
+      }
+
+      const preset = TOPOLOGY_PRESETS[args.preset];
+
+      // Wipe seeded taxonomies. Soft-delete where the schema supports it,
+      // hard-delete versions tables that cascade.
+      await tx
+        .update(schema.salesRoles)
+        .set({ deletedAt: new Date() })
+        .where(eq(schema.salesRoles.workspaceId, args.workspaceId));
+      await tx
+        .update(schema.funnelStages)
+        .set({ deletedAt: new Date() })
+        .where(eq(schema.funnelStages.workspaceId, args.workspaceId));
+      // dispositions has no deletedAt; flip is_active=0 instead.
+      await tx
+        .update(schema.dispositions)
+        .set({ isActive: 0 })
+        .where(eq(schema.dispositions.workspaceId, args.workspaceId));
+      await tx
+        .update(schema.commissionRules)
+        .set({ deletedAt: new Date(), isActive: 0 })
+        .where(eq(schema.commissionRules.workspaceId, args.workspaceId));
+
+      // Re-seed roles + versions.
+      const roleSeeds = preset.roles.map((r) => ({
+        workspaceId: args.workspaceId,
+        slug: r.slug,
+        label: r.label,
+        stageOwnership: [...r.stageOwnership],
+        defaultCommissionShare: r.defaultCommissionShare,
+        defaultSlaSeconds: r.defaultSlaSeconds,
+        sortOrder: r.sortOrder,
+      }));
+      const insertedRoles = roleSeeds.length
+        ? await tx
+            .insert(schema.salesRoles)
+            .values(roleSeeds)
+            .returning({ id: schema.salesRoles.id })
+        : [];
+      if (insertedRoles.length > 0) {
+        await tx.insert(schema.salesRoleVersions).values(
+          insertedRoles.map((r, idx) => ({
+            salesRoleId: r.id,
+            version: 1,
+            snapshot: {
+              slug: roleSeeds[idx]!.slug,
+              label: roleSeeds[idx]!.label,
+              stageOwnership: roleSeeds[idx]!.stageOwnership,
+              defaultCommissionShare: roleSeeds[idx]!.defaultCommissionShare,
+              defaultSlaSeconds: roleSeeds[idx]!.defaultSlaSeconds,
+            },
+            createdBy: args.actorUserId,
+          })),
+        );
+      }
+
+      // Re-seed stages + versions.
+      const stageSeeds = preset.stages.map((s) => ({
+        workspaceId: args.workspaceId,
+        slug: s.slug,
+        label: s.label,
+        kind: s.kind,
+        ordinal: s.ordinal,
+      }));
+      const insertedStages = stageSeeds.length
+        ? await tx
+            .insert(schema.funnelStages)
+            .values(stageSeeds)
+            .returning({ id: schema.funnelStages.id })
+        : [];
+      if (insertedStages.length > 0) {
+        await tx.insert(schema.funnelStageVersions).values(
+          insertedStages.map((stage, idx) => ({
+            funnelStageId: stage.id,
+            version: 1,
+            snapshot: {
+              slug: stageSeeds[idx]!.slug,
+              label: stageSeeds[idx]!.label,
+              kind: stageSeeds[idx]!.kind,
+              ordinal: stageSeeds[idx]!.ordinal,
+            },
+          })),
+        );
+      }
+
+      // Re-seed default commission rules from the new preset.
+      const ruleRows = insertedRoles.map((role, idx) => ({
+        workspaceId: args.workspaceId,
+        name: `${roleSeeds[idx]!.label} default`,
+        type: "flat_rate" as const,
+        salesRoleId: role.id,
+        sharePct: roleSeeds[idx]!.defaultCommissionShare,
+        holdDays: 30,
+        paidOn: "collected",
+        effectiveFrom: new Date(),
+        createdBy: args.actorUserId,
+      }));
+      const insertedRules = ruleRows.length
+        ? await tx
+            .insert(schema.commissionRules)
+            .values(ruleRows)
+            .returning({ id: schema.commissionRules.id })
+        : [];
+      if (insertedRules.length > 0) {
+        await tx.insert(schema.commissionRuleVersions).values(
+          insertedRules.map((r, idx) => ({
+            commissionRuleId: r.id,
+            version: 1,
+            snapshot: { ...ruleRows[idx] },
+            createdBy: args.actorUserId,
+          })),
+        );
+      }
+
+      // Update workspace's preset marker.
+      await tx
+        .update(schema.workspaces)
+        .set({ topologyPreset: args.preset, updatedAt: new Date() })
+        .where(eq(schema.workspaces.id, args.workspaceId));
+
+      return { applied: true as const, preset: args.preset };
+    }),
+  );
+}

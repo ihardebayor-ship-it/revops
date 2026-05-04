@@ -5,11 +5,20 @@ import { getAuth } from "@revops/auth/server";
 import { bypassRls, schema } from "@revops/db/client";
 import { TOPOLOGY_PRESETS } from "@revops/domain/onboarding";
 import { getBrand } from "~/lib/brand";
+import { OnboardingWizard } from "./wizard";
 
-// Phase 0 placeholder. Workspace bootstrap already runs on sign-up with the
-// `solo` preset. Phase 1 M1 turns this into a 3-question wizard that
-// (a) re-bootstraps with a different preset if the workspace is empty,
-// (b) onboards the user into per-role dashboards.
+// Elite onboarding wizard. JTBD: get the user from sign-up to a populated
+// workspace they can actually demo / use, in <2 minutes.
+//
+// Three steps:
+//   1. Topology + workspace name (live preview of what each preset
+//      configures, edit the workspace name inline)
+//   2. First quota (live calibration: industry-default suggestions; if
+//      they skip, dashboards still work, just no forecast)
+//   3. Sample data option (one-click "see what this looks like with
+//      data" → populates a Demo sub-account; or skip to land in their
+//      empty real workspace)
+
 export default async function OnboardingPage() {
   const auth = getAuth();
   const session = await auth.api.getSession({ headers: await headers() });
@@ -17,7 +26,6 @@ export default async function OnboardingPage() {
     redirect("/sign-in");
   }
 
-  // Show the user's auto-created workspace + the preset it was bootstrapped with.
   const workspace = await bypassRls(async (db) => {
     const rows = await db
       .select({
@@ -38,58 +46,51 @@ export default async function OnboardingPage() {
     return rows[0] ?? null;
   });
 
-  const brand = await getBrand(workspace?.id);
+  if (!workspace) {
+    return (
+      <main className="mx-auto max-w-2xl p-8">
+        <h1 className="text-2xl font-semibold tracking-tight">Workspace not ready</h1>
+        <p className="mt-2 text-sm text-zinc-400">
+          We didn't find a workspace for your account. Try signing out and back in.
+        </p>
+      </main>
+    );
+  }
+
+  const brand = await getBrand(workspace.id);
+  const presets = Object.values(TOPOLOGY_PRESETS).map((p) => ({
+    slug: p.slug,
+    label: p.label,
+    description: p.description,
+    roles: p.roles.map((r) => ({
+      slug: r.slug,
+      label: r.label,
+      sharePct: parseFloat(r.defaultCommissionShare),
+    })),
+    stages: p.stages.map((s) => ({ slug: s.slug, label: s.label })),
+  }));
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
-      <header className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-tight">Welcome to {brand.name}</h1>
-        <p className="mt-2 text-zinc-400">
-          Your workspace is ready. {workspace ? `Currently set up with the "${workspace.topologyPreset}" preset.` : ""}
+    <main className="mx-auto flex max-w-3xl flex-col gap-8 p-8">
+      <header>
+        <p className="text-xs uppercase tracking-wider text-blue-400">{brand.name}</p>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-100">
+          Set up your workspace
+        </h1>
+        <p className="mt-2 text-sm text-zinc-400">
+          Three quick choices. Skip any and adjust in Settings later — none of these lock
+          you into anything.
         </p>
       </header>
-
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold tracking-tight">Topology presets</h2>
-        <p className="text-sm text-zinc-400">
-          Phase 1 will turn this into a 3-question wizard that picks the right preset for
-          your team. For now, here's what each preset configures:
-        </p>
-        <div className="grid gap-3">
-          {Object.values(TOPOLOGY_PRESETS).map((preset) => (
-            <div
-              key={preset.slug}
-              className={`rounded-md border p-4 ${preset.slug === workspace?.topologyPreset ? "border-blue-500 bg-blue-500/5" : "border-zinc-800"}`}
-            >
-              <div className="mb-1 flex items-center justify-between">
-                <span className="font-medium">{preset.label}</span>
-                {preset.slug === workspace?.topologyPreset && (
-                  <span className="text-xs uppercase tracking-wider text-blue-400">Active</span>
-                )}
-              </div>
-              <p className="text-sm text-zinc-400">{preset.description}</p>
-              {preset.roles.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-500">
-                  {preset.roles.map((r) => (
-                    <span key={r.slug} className="rounded bg-zinc-900 px-2 py-1">
-                      {r.label} · {Math.round(parseFloat(r.defaultCommissionShare) * 100)}%
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="mt-8">
-        <a
-          href={workspace ? `/${workspace.slug}/dashboard` : "/"}
-          className="inline-block rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
-        >
-          Continue
-        </a>
-      </section>
+      <OnboardingWizard
+        workspace={{
+          id: workspace.id,
+          name: workspace.name,
+          slug: workspace.slug,
+          topologyPreset: workspace.topologyPreset,
+        }}
+        presets={presets}
+      />
     </main>
   );
 }

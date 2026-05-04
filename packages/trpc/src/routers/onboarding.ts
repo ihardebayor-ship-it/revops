@@ -2,7 +2,10 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { schema } from "@revops/db/client";
+import { onboarding as onboardingDomain, goals as goalsDomain } from "@revops/domain";
 import { router, authedProcedure } from "../server";
+
+const TOPOLOGY_PRESET = z.enum(["solo", "setter_closer", "setter_closer_cx", "custom"]);
 
 export const onboardingRouter = router({
   getStatus: authedProcedure.query(async ({ ctx }) => {
@@ -22,23 +25,79 @@ export const onboardingRouter = router({
     return { needsOnboarding: !ws, workspace: ws ?? null };
   }),
 
-  // Phase 1 expansion: M1 ships getStatus only. selectTopology + complete
-  // (which re-bootstraps the workspace with a different preset) lands when
-  // the wizard UI is ready and we can validate that the user has no
-  // sales/calls before resetting taxonomies.
-  markComplete: authedProcedure
-    .input(z.object({ workspaceId: z.string().uuid() }))
+  // Rename the workspace (and update slug-derived display where it shows).
+  // Slug stays stable so URLs don't break.
+  updateWorkspaceName: authedProcedure
+    .input(z.object({ name: z.string().min(2).max(80) }))
     .mutation(async ({ ctx, input }) => {
-      if (input.workspaceId !== ctx.user.workspaceId) {
-        throw new TRPCError({ code: "FORBIDDEN" });
-      }
+      if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
       await ctx.db
-        .update(schema.workspaceSettings)
-        .set({
-          metadata: { onboardingCompletedAt: new Date().toISOString() },
-          updatedAt: new Date(),
-        })
-        .where(and(eq(schema.workspaceSettings.workspaceId, input.workspaceId)));
+        .update(schema.workspaces)
+        .set({ name: input.name, updatedAt: new Date() })
+        .where(eq(schema.workspaces.id, ctx.user.workspaceId));
       return { ok: true };
     }),
+
+  // Switch topology preset (re-bootstrap roles + funnel + dispositions +
+  // default commission rules from the new preset). Domain layer refuses
+  // if any sales/calls already exist; tRPC surfaces the reason.
+  applyTopology: authedProcedure
+    .input(z.object({ preset: TOPOLOGY_PRESET }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+      const result = await onboardingDomain.applyTopologyPreset({
+        workspaceId: ctx.user.workspaceId,
+        preset: input.preset,
+        actorUserId: ctx.user.userId,
+      });
+      if (!result.applied) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: result.reason });
+      }
+      return result;
+    }),
+
+  // Set the calling user's first quota for the current month. This is
+  // the bridge between sign-up and the closer/setter dashboards rendering
+  // a real forecast instead of a "no quota set" fallback.
+  setFirstQuota: authedProcedure
+    .input(
+      z.object({
+        targetValue: z.string().regex(/^\d+(\.\d{1,2})?$/, "Decimal amount required"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
+        throw new TRPCError({ code: "BAD_REQUEST" });
+      }
+      const now = new Date();
+      const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+        .toISOString().slice(0, 10);
+      const periodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
+        .toISOString().slice(0, 10);
+      return goalsDomain.createGoal(ctx.db, {
+        workspaceId: ctx.user.workspaceId,
+        subAccountId: ctx.user.subAccountId,
+        actorUserId: ctx.user.userId,
+        kind: "quota",
+        metric: "booked_amount",
+        targetValue: input.targetValue,
+        currency: "USD",
+        periodKind: "monthly",
+        periodStart,
+        periodEnd,
+        userId: ctx.user.userId,
+      });
+    }),
+
+  markComplete: authedProcedure.mutation(async ({ ctx }) => {
+    if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+    await ctx.db
+      .update(schema.workspaceSettings)
+      .set({
+        metadata: { onboardingCompletedAt: new Date().toISOString() },
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schema.workspaceSettings.workspaceId, ctx.user.workspaceId)));
+    return { ok: true };
+  }),
 });
