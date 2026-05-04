@@ -10,10 +10,29 @@ import {
 function buildAuth() {
   const env = getServerEnv();
   const db = getDb();
+
+  // Build the trusted-origins list. Better Auth rejects requests whose
+  // Origin header isn't in this list with "Invalid origin". On Vercel,
+  // deploys land at unpredictable preview URLs (vercel.app + branch +
+  // production aliases) and the configured BETTER_AUTH_URL might not
+  // match — so we read every Vercel-injected URL var and treat them
+  // all as trusted. APP_URL covers a custom domain.
+  const trustedOrigins = new Set<string>([env.BETTER_AUTH_URL, "http://localhost:3000"]);
+  if (env.APP_URL) trustedOrigins.add(env.APP_URL);
+  for (const key of [
+    "VERCEL_URL", // current deployment, e.g. revops-abc123.vercel.app
+    "VERCEL_BRANCH_URL", // branch alias
+    "VERCEL_PROJECT_PRODUCTION_URL", // canonical prod alias
+  ] as const) {
+    const v = process.env[key];
+    if (v) trustedOrigins.add(`https://${v}`);
+  }
+
   return betterAuth({
     database: drizzleAdapter(db, { provider: "pg" }),
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
+    trustedOrigins: Array.from(trustedOrigins),
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
