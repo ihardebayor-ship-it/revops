@@ -38,112 +38,180 @@ export default async function CloserDashboardPage({
   const prevPeriod = analytics.previousPeriod(period);
 
   const data = await withTenant(ctx.authCtx, async (db) => {
-    const quota = await analytics.getActiveQuota(db, {
-      workspaceId: ctx.workspace.id,
-      userId,
-      subAccountId: subId,
-    });
+    // Defensive: every analytics call gets a try/catch with a safe
+    // fallback so a single failed query (e.g. a fresh-workspace edge
+    // case) doesn't 500 the whole dashboard. Errors log to Vercel's
+    // runtime so we still see what happened.
+    const safe = async <T,>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await fn();
+      } catch (err) {
+        console.error(`[closer.${label}]`, err instanceof Error ? err.message : err);
+        return fallback;
+      }
+    };
+
+    const quota = await safe(
+      "getActiveQuota",
+      () =>
+        analytics.getActiveQuota(db, {
+          workspaceId: ctx.workspace.id,
+          userId,
+          subAccountId: subId,
+        }),
+      null,
+    );
+
+    const zeroAttainment: analytics.AttainmentResult = {
+      quota: 0,
+      attained: 0,
+      attainmentPct: 0,
+      daysElapsed: 0,
+      daysRemaining: 0,
+      totalDays: 1,
+      paceFromHistory: 0,
+      forecastEnd: 0,
+      forecastConfidenceLow: 0,
+      forecastConfidenceHigh: 0,
+      requiredDailyRunRate: 0,
+      status: "on_pace",
+    };
+    const zeroPipeline: analytics.PipelineHealth = {
+      totalCallCount: 0,
+      weightedPipelineValue: 0,
+      avgDealSize: 0,
+      historicalCloseRate: 0,
+      coverageRatio: null,
+      agingBuckets: { next7d: 0, next7to14d: 0, next14to30d: 0, over30d: 0 },
+      staleCallCount: 0,
+    };
 
     const [attainmentResult, prevAttainment, pipeline, bookedSeries, commissionPipelineSeries] =
       await Promise.all([
-        analytics.attainment(db, {
-          workspaceId: ctx.workspace.id,
-          subAccountId: subId,
-          userId,
-          quota: quota?.targetValue ?? 0,
-          period,
-        }),
-        analytics.attainment(db, {
-          workspaceId: ctx.workspace.id,
-          subAccountId: subId,
-          userId,
-          quota: quota?.targetValue ?? 0,
-          period: prevPeriod,
-        }),
-        analytics.pipelineHealth(db, {
-          workspaceId: ctx.workspace.id,
-          subAccountId: subId,
-          userId,
-        }),
-        analytics.bookedAmountSeries(db, {
-          workspaceId: ctx.workspace.id,
-          subAccountId: subId,
-          userId,
-          period: { from: new Date(Date.now() - 30 * 24 * 3600 * 1000), to: new Date() },
-        }),
-        analytics.commissionAvailableSeries(db, {
-          workspaceId: ctx.workspace.id,
-          subAccountId: subId,
-          userId,
-          period: { from: new Date(), to: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
-        }),
+        safe("attainment.current", () =>
+          analytics.attainment(db, {
+            workspaceId: ctx.workspace.id,
+            subAccountId: subId,
+            userId,
+            quota: quota?.targetValue ?? 0,
+            period,
+          }), zeroAttainment),
+        safe("attainment.prev", () =>
+          analytics.attainment(db, {
+            workspaceId: ctx.workspace.id,
+            subAccountId: subId,
+            userId,
+            quota: quota?.targetValue ?? 0,
+            period: prevPeriod,
+          }), zeroAttainment),
+        safe("pipelineHealth", () =>
+          analytics.pipelineHealth(db, {
+            workspaceId: ctx.workspace.id,
+            subAccountId: subId,
+            userId,
+          }), zeroPipeline),
+        safe("bookedSeries", () =>
+          analytics.bookedAmountSeries(db, {
+            workspaceId: ctx.workspace.id,
+            subAccountId: subId,
+            userId,
+            period: { from: new Date(Date.now() - 30 * 24 * 3600 * 1000), to: new Date() },
+          }), [] as analytics.TimeseriesPoint[]),
+        safe("commissionPipelineSeries", () =>
+          analytics.commissionAvailableSeries(db, {
+            workspaceId: ctx.workspace.id,
+            subAccountId: subId,
+            userId,
+            period: { from: new Date(), to: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
+          }), [] as analytics.TimeseriesPoint[]),
       ]);
 
-    const staleCalls = await db
-      .select({
-        id: schema.calls.id,
-        contactName: schema.calls.contactName,
-        contactEmail: schema.calls.contactEmail,
-        appointmentAt: schema.calls.appointmentAt,
-      })
-      .from(schema.calls)
-      .where(
-        and(
-          eq(schema.calls.subAccountId, subId),
-          eq(schema.calls.closerUserId, userId),
-          isNotNull(schema.calls.appointmentAt),
-          lte(schema.calls.appointmentAt, new Date()),
-          isNull(schema.calls.completedAt),
-          isNull(schema.calls.dispositionId),
-          isNull(schema.calls.deletedAt),
-        ),
-      )
-      .orderBy(desc(schema.calls.appointmentAt))
-      .limit(5);
+    const staleCalls = await safe("staleCalls", () =>
+      db
+        .select({
+          id: schema.calls.id,
+          contactName: schema.calls.contactName,
+          contactEmail: schema.calls.contactEmail,
+          appointmentAt: schema.calls.appointmentAt,
+        })
+        .from(schema.calls)
+        .where(
+          and(
+            eq(schema.calls.subAccountId, subId),
+            eq(schema.calls.closerUserId, userId),
+            isNotNull(schema.calls.appointmentAt),
+            lte(schema.calls.appointmentAt, new Date()),
+            isNull(schema.calls.completedAt),
+            isNull(schema.calls.dispositionId),
+            isNull(schema.calls.deletedAt),
+          ),
+        )
+        .orderBy(desc(schema.calls.appointmentAt))
+        .limit(5), [] as Array<{
+        id: string;
+        contactName: string | null;
+        contactEmail: string | null;
+        appointmentAt: Date | null;
+      }>);
 
-    const unlinkedSales = await db
-      .select({
-        id: schema.sales.id,
-        productName: schema.sales.productName,
-        bookedAmount: schema.sales.bookedAmount,
-        currency: schema.sales.currency,
-        closedAt: schema.sales.closedAt,
-        sharePct: schema.commissionRecipients.sharePct,
-      })
-      .from(schema.commissionRecipients)
-      .innerJoin(schema.sales, eq(schema.sales.id, schema.commissionRecipients.saleId))
-      .where(
-        and(
-          eq(schema.commissionRecipients.userId, userId),
-          eq(schema.sales.subAccountId, subId),
-          isNull(schema.sales.linkedCallId),
-          isNull(schema.sales.deletedAt),
-          isNull(schema.commissionRecipients.deletedAt),
-          gte(schema.sales.closedAt, new Date(Date.now() - 30 * 24 * 3600 * 1000)),
-        ),
-      )
-      .orderBy(desc(schema.sales.closedAt))
-      .limit(5);
+    const unlinkedSales = await safe("unlinkedSales", () =>
+      db
+        .select({
+          id: schema.sales.id,
+          productName: schema.sales.productName,
+          bookedAmount: schema.sales.bookedAmount,
+          currency: schema.sales.currency,
+          closedAt: schema.sales.closedAt,
+          sharePct: schema.commissionRecipients.sharePct,
+        })
+        .from(schema.commissionRecipients)
+        .innerJoin(schema.sales, eq(schema.sales.id, schema.commissionRecipients.saleId))
+        .where(
+          and(
+            eq(schema.commissionRecipients.userId, userId),
+            eq(schema.sales.subAccountId, subId),
+            isNull(schema.sales.linkedCallId),
+            isNull(schema.sales.deletedAt),
+            isNull(schema.commissionRecipients.deletedAt),
+            gte(schema.sales.closedAt, new Date(Date.now() - 30 * 24 * 3600 * 1000)),
+          ),
+        )
+        .orderBy(desc(schema.sales.closedAt))
+        .limit(5), [] as Array<{
+        id: string;
+        productName: string | null;
+        bookedAmount: string;
+        currency: string;
+        closedAt: Date;
+        sharePct: string;
+      }>);
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000);
-    const [refundCounts] = await db
-      .select({
-        total: sql<number>`count(*)::int`,
-        refunded: sql<number>`count(*) filter (where ${schema.sales.refundStatus} = 'issued')::int`,
-      })
-      .from(schema.sales)
-      .innerJoin(
-        schema.commissionRecipients,
-        eq(schema.commissionRecipients.saleId, schema.sales.id),
-      )
-      .where(
-        and(
-          eq(schema.commissionRecipients.userId, userId),
-          eq(schema.sales.subAccountId, subId),
-          isNull(schema.sales.deletedAt),
-          gte(schema.sales.closedAt, thirtyDaysAgo),
-        ),
-      );
+    const refundCounts = await safe(
+      "refundCounts",
+      async () => {
+        const [row] = await db
+          .select({
+            total: sql<number>`count(*)::int`,
+            refunded: sql<number>`count(*) filter (where ${schema.sales.refundStatus} = 'issued')::int`,
+          })
+          .from(schema.sales)
+          .innerJoin(
+            schema.commissionRecipients,
+            eq(schema.commissionRecipients.saleId, schema.sales.id),
+          )
+          .where(
+            and(
+              eq(schema.commissionRecipients.userId, userId),
+              eq(schema.sales.subAccountId, subId),
+              isNull(schema.sales.deletedAt),
+              gte(schema.sales.closedAt, thirtyDaysAgo),
+            ),
+          );
+        return row ?? { total: 0, refunded: 0 };
+      },
+      { total: 0, refunded: 0 },
+    );
 
     return {
       quota,
