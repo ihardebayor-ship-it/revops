@@ -43,14 +43,19 @@ export default async function AgentPage({
         ) : (
           <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
             {threads.map((t) => (
-              <li key={t.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-                <span className="flex-1 text-zinc-100">{t.title}</span>
-                <span className="text-xs text-zinc-500">
-                  ${Number(t.totalCostUsd).toFixed(4)}
-                </span>
-                <span className="text-xs text-zinc-500">
-                  <Time value={t.lastMessageAt} />
-                </span>
+              <li key={t.id}>
+                <a
+                  href={`/${slug}/agent/thread/${t.id}`}
+                  className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-zinc-900/50"
+                >
+                  <span className="flex-1 text-zinc-100">{t.title}</span>
+                  <span className="text-xs text-zinc-500">
+                    ${Number(t.totalCostUsd).toFixed(4)}
+                  </span>
+                  <span className="text-xs text-zinc-500">
+                    <Time value={t.lastMessageAt} />
+                  </span>
+                </a>
               </li>
             ))}
           </ul>
