@@ -34,6 +34,22 @@ export default async function IntegrationsPage({
 }) {
   const { workspace: slug } = await params;
   const ctx = await resolveWorkspaceBySlug(slug);
+  const subAccountId = ctx.authCtx.subAccountId;
+
+  if (!subAccountId) {
+    return (
+      <div className="mx-auto flex max-w-4xl flex-col gap-6">
+        <PageHeader
+          title="Integrations"
+          description="Select a sub-account before connecting or viewing provider credentials."
+        />
+        <EmptyState
+          title="No sub-account context."
+          description="Integrations are scoped to a sub-account so provider accounts cannot bleed across locations."
+        />
+      </div>
+    );
+  }
 
   const connections = await withTenant(ctx.authCtx, async (db) =>
     db
@@ -50,6 +66,7 @@ export default async function IntegrationsPage({
       .where(
         and(
           eq(schema.dataSourceConnections.workspaceId, ctx.workspace.id),
+          eq(schema.dataSourceConnections.subAccountId, subAccountId),
           isNull(schema.dataSourceConnections.deletedAt),
         ),
       ),
@@ -89,8 +106,7 @@ export default async function IntegrationsPage({
                 <p className="mt-1 text-xs text-zinc-400">{p.description}</p>
                 {conn && (
                   <p className="mt-1 text-xs text-zinc-500">
-                    Connected{" "}
-                    <Time value={conn.createdAt} />
+                    Connected <Time value={conn.createdAt} />
                     {conn.externalAccountId && ` · external id ${conn.externalAccountId}`}
                   </p>
                 )}

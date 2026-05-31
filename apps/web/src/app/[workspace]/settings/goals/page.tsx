@@ -27,7 +27,10 @@ export default async function GoalsSettingsPage({
         subAccountId: ctx.membership.subAccountId!,
         periodKind: "monthly",
       }),
-      teamDomain.listTeam(db, { workspaceId: ctx.workspace.id }),
+      teamDomain.listTeam(db, {
+        workspaceId: ctx.workspace.id,
+        subAccountId: ctx.membership.subAccountId,
+      }),
     ]),
   );
 
@@ -35,10 +38,9 @@ export default async function GoalsSettingsPage({
     <div className="space-y-2">
       <h2 className="text-lg font-semibold tracking-tight">Goals</h2>
       <p className="text-sm text-zinc-400">
-        Per-period quotas. Each cell shows the rep's quota and their actual
-        attainment for that period — color-graded by status. Click any cell
-        to edit, or "+ Quota" on a blank cell to create. Editing live shows
-        each rep's last 3 months of actuals so you can calibrate without
+        Per-period quotas. Each cell shows the rep's quota and their actual attainment for that
+        period — color-graded by status. Click any cell to edit, or "+ Quota" on a blank cell to
+        create. Editing live shows each rep's last 3 months of actuals so you can calibrate without
         guessing.
       </p>
       <GoalsGridEditor

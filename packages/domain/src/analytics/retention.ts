@@ -42,9 +42,11 @@ export type BookHealthSummary = {
 };
 
 export async function bookHealth(db: Db, args: BookHealthArgs): Promise<BookHealthSummary> {
-  const conditions = [isNull(schema.customers.deletedAt)];
+  const conditions = [
+    eq(schema.customers.workspaceId, args.workspaceId),
+    isNull(schema.customers.deletedAt),
+  ];
   if (args.subAccountId) conditions.push(eq(schema.customers.subAccountId, args.subAccountId));
-  else conditions.push(eq(schema.customers.workspaceId, args.workspaceId));
 
   const rows = await db
     .select({
@@ -69,29 +71,32 @@ export async function bookHealth(db: Db, args: BookHealthArgs): Promise<BookHeal
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000);
   const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 3600 * 1000);
 
+  const churnConditions = [
+    eq(schema.customers.workspaceId, args.workspaceId),
+    isNotNull(schema.customers.churnAt),
+    sql`${schema.customers.churnAt} >= ${thirtyDaysAgo}`,
+    isNull(schema.customers.deletedAt),
+  ];
+  if (args.subAccountId) churnConditions.push(eq(schema.customers.subAccountId, args.subAccountId));
+
   const [churnRow] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(schema.customers)
-    .where(
-      and(
-        eq(schema.customers.workspaceId, args.workspaceId),
-        isNotNull(schema.customers.churnAt),
-        sql`${schema.customers.churnAt} >= ${thirtyDaysAgo}`,
-        isNull(schema.customers.deletedAt),
-      ),
-    );
+    .where(and(...churnConditions));
+
+  const refundConditions = [
+    eq(schema.sales.workspaceId, args.workspaceId),
+    eq(schema.sales.refundStatus, "issued"),
+    sql`${schema.sales.refundedAt} >= ${thirtyDaysAgo}`,
+    sql`${schema.sales.closedAt} <= ${fourteenDaysAgo}`,
+    isNull(schema.sales.deletedAt),
+  ];
+  if (args.subAccountId) refundConditions.push(eq(schema.sales.subAccountId, args.subAccountId));
 
   const [refundRow] = await db
     .select({ n: sql<number>`count(distinct ${schema.sales.customerId})::int` })
     .from(schema.sales)
-    .where(
-      and(
-        eq(schema.sales.workspaceId, args.workspaceId),
-        eq(schema.sales.refundStatus, "issued"),
-        sql`${schema.sales.refundedAt} >= ${thirtyDaysAgo}`,
-        sql`${schema.sales.closedAt} <= ${fourteenDaysAgo}`,
-      ),
-    );
+    .where(and(...refundConditions));
 
   return {
     total,
@@ -118,9 +123,7 @@ export async function customersNeedingTouch(
 ): Promise<AtRiskCustomer[]> {
   const limit = Math.min(args.limit ?? 25, 100);
   // Pull customers + last call + last sale + refund presence in one shot.
-  const conditions: ReturnType<typeof eq>[] = [
-    eq(schema.customers.workspaceId, args.workspaceId),
-  ];
+  const conditions: ReturnType<typeof eq>[] = [eq(schema.customers.workspaceId, args.workspaceId)];
   if (args.subAccountId) conditions.push(eq(schema.customers.subAccountId, args.subAccountId));
 
   const rows = await db.execute(sql`

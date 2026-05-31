@@ -4,7 +4,13 @@ import { describe, expect, it } from "vitest";
 const callsSource = readFileSync(new URL("./calls/index.ts", import.meta.url), "utf8");
 const customersSource = readFileSync(new URL("./customers/index.ts", import.meta.url), "utf8");
 const goalsSource = readFileSync(new URL("./goals/index.ts", import.meta.url), "utf8");
+const reconciliationSource = readFileSync(
+  new URL("./reconciliation/index.ts", import.meta.url),
+  "utf8",
+);
+const retentionSource = readFileSync(new URL("./analytics/retention.ts", import.meta.url), "utf8");
 const salesSource = readFileSync(new URL("./sales/index.ts", import.meta.url), "utf8");
+const teamSource = readFileSync(new URL("./team/index.ts", import.meta.url), "utf8");
 
 describe("data spine tenant guards", () => {
   it("requires calls and opt-ins to share the selected sub-account before linking", () => {
@@ -61,6 +67,18 @@ describe("data spine tenant guards", () => {
     expect(customersSource).toContain("eq(schema.customers.subAccountId, args.subAccountId)");
     expect(customersSource).toContain("eq(schema.sales.subAccountId, args.subAccountId)");
     expect(customersSource).toContain("eq(schema.calls.subAccountId, args.subAccountId)");
+  });
+
+  it("keeps adjacent data-spine reads sub-account aware", () => {
+    expect(teamSource).toContain("args: { workspaceId: string; subAccountId?: string | null }");
+    expect(teamSource).toContain("eq(schema.memberships.subAccountId, args.subAccountId)");
+    expect(retentionSource).toContain(
+      "churnConditions.push(eq(schema.customers.subAccountId, args.subAccountId))",
+    );
+    expect(retentionSource).toContain(
+      "refundConditions.push(eq(schema.sales.subAccountId, args.subAccountId))",
+    );
+    expect(reconciliationSource).toContain("eq(schema.customers.subAccountId, sale.subAccountId)");
   });
 });
 

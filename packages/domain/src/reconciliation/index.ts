@@ -231,7 +231,14 @@ export async function suggestLinksForSale(
       phone: schema.customers.phone,
     })
     .from(schema.customers)
-    .where(eq(schema.customers.id, sale.customerId ?? ""))
+    .where(
+      and(
+        eq(schema.customers.id, sale.customerId ?? ""),
+        eq(schema.customers.workspaceId, args.workspaceId),
+        eq(schema.customers.subAccountId, sale.subAccountId),
+        isNull(schema.customers.deletedAt),
+      ),
+    )
     .limit(1);
 
   const lower = new Date(sale.closedAt.getTime() - 14 * 24 * 3600 * 1000);
@@ -284,10 +291,7 @@ export async function suggestLinksForSale(
   return scored.slice(0, limit);
 }
 
-export async function unlinkedSalesQueue(
-  db: Db,
-  args: { subAccountId: string; limit?: number },
-) {
+export async function unlinkedSalesQueue(db: Db, args: { subAccountId: string; limit?: number }) {
   void sql; // imported for raw queries; reserved for view-driven version
   return db
     .select({

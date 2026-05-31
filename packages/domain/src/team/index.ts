@@ -42,8 +42,16 @@ export type TeamInvitation = {
 
 export async function listTeam(
   db: Db,
-  args: { workspaceId: string },
+  args: { workspaceId: string; subAccountId?: string | null },
 ): Promise<{ members: TeamMember[]; invitations: TeamInvitation[] }> {
+  const memberConditions = [
+    eq(schema.memberships.workspaceId, args.workspaceId),
+    isNull(schema.memberships.deletedAt),
+  ];
+  if (args.subAccountId) {
+    memberConditions.push(eq(schema.memberships.subAccountId, args.subAccountId));
+  }
+
   const memberRows = await db
     .select({
       membershipId: schema.memberships.id,
@@ -56,27 +64,25 @@ export async function listTeam(
     })
     .from(schema.memberships)
     .innerJoin(schema.user, eq(schema.user.id, schema.memberships.userId))
-    .where(
-      and(
-        eq(schema.memberships.workspaceId, args.workspaceId),
-        isNull(schema.memberships.deletedAt),
-      ),
-    )
+    .where(and(...memberConditions))
     .orderBy(asc(schema.memberships.createdAt));
 
   // Pull all sales-role assignments for these users in this workspace.
+  const assignmentConditions = [
+    eq(schema.salesRoleAssignments.workspaceId, args.workspaceId),
+    isNull(schema.salesRoleAssignments.deletedAt),
+  ];
+  if (args.subAccountId) {
+    assignmentConditions.push(eq(schema.salesRoleAssignments.subAccountId, args.subAccountId));
+  }
+
   const assignments = await db
     .select({
       userId: schema.salesRoleAssignments.userId,
       salesRoleId: schema.salesRoleAssignments.salesRoleId,
     })
     .from(schema.salesRoleAssignments)
-    .where(
-      and(
-        eq(schema.salesRoleAssignments.workspaceId, args.workspaceId),
-        isNull(schema.salesRoleAssignments.deletedAt),
-      ),
-    );
+    .where(and(...assignmentConditions));
   const byUser = new Map<string, string[]>();
   for (const a of assignments) {
     const list = byUser.get(a.userId) ?? [];
@@ -88,6 +94,16 @@ export async function listTeam(
     ...m,
     salesRoleIds: byUser.get(m.userId) ?? [],
   }));
+
+  const invitationConditions = [
+    eq(schema.workspaceInvitations.workspaceId, args.workspaceId),
+    isNull(schema.workspaceInvitations.acceptedAt),
+    isNull(schema.workspaceInvitations.revokedAt),
+    gt(schema.workspaceInvitations.expiresAt, new Date()),
+  ];
+  if (args.subAccountId) {
+    invitationConditions.push(eq(schema.workspaceInvitations.subAccountId, args.subAccountId));
+  }
 
   const inviteRows = await db
     .select({
@@ -101,14 +117,7 @@ export async function listTeam(
       token: schema.workspaceInvitations.token,
     })
     .from(schema.workspaceInvitations)
-    .where(
-      and(
-        eq(schema.workspaceInvitations.workspaceId, args.workspaceId),
-        isNull(schema.workspaceInvitations.acceptedAt),
-        isNull(schema.workspaceInvitations.revokedAt),
-        gt(schema.workspaceInvitations.expiresAt, new Date()),
-      ),
-    )
+    .where(and(...invitationConditions))
     .orderBy(desc(schema.workspaceInvitations.createdAt));
 
   return { members, invitations: inviteRows };
@@ -167,10 +176,7 @@ export async function inviteMember(db: Db, input: InviteMemberInput): Promise<Te
       expiresAt,
     })
     .onConflictDoUpdate({
-      target: [
-        schema.workspaceInvitations.workspaceId,
-        schema.workspaceInvitations.email,
-      ],
+      target: [schema.workspaceInvitations.workspaceId, schema.workspaceInvitations.email],
       set: {
         accessRole: input.accessRole,
         salesRoleIds: input.salesRoleIds ?? [],
@@ -295,7 +301,10 @@ export async function updateMember(db: Db, input: UpdateMemberInput) {
       // Soft-delete any current assignments not in the new list.
       const desired = new Set(input.patch.salesRoleIds);
       const current = await tx
-        .select({ id: schema.salesRoleAssignments.id, salesRoleId: schema.salesRoleAssignments.salesRoleId })
+        .select({
+          id: schema.salesRoleAssignments.id,
+          salesRoleId: schema.salesRoleAssignments.salesRoleId,
+        })
         .from(schema.salesRoleAssignments)
         .where(
           and(
