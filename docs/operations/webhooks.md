@@ -93,3 +93,24 @@ Current provenance is sufficient for Sprint 2:
 - `calls`, `sales`, `optins`, and `applications` dedupe inside tenant scope with `sub_account_id + source_integration + external_id`.
 - `funnel_events.source_event_id` points back to the inbound webhook row, which carries `provider_account_id`.
 - GHL provider account maps to one sub-account location; Aircall/Fathom tenant resolution happens before writes.
+
+## Test-Only Smoke
+
+When `ENABLE_TEST_ENDPOINTS=true`, a platform superadmin can run a synthetic GHL smoke for a selected workspace/sub-account:
+
+```bash
+curl -X POST \
+  -H "x-workspace-id: <workspace-id>" \
+  -H "x-sub-account-id: <sub-account-id>" \
+  --cookie "<signed-in-session-cookie>" \
+  http://localhost:3000/api/test/webhook-replay-smoke
+```
+
+The endpoint requires an existing GHL connection for that sub-account and validates:
+
+- synthetic inbound insert is visible in `webhooks.listInbound` as `pending`;
+- synchronous GHL processing moves it to `processed`;
+- replay-style reset moves it back to `pending`;
+- reprocessing moves it back to `processed` without creating a duplicate call.
+
+The smoke creates durable test rows with `smoke-` external ids. Use only in development/staging/demo environments.
