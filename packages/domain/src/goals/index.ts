@@ -42,7 +42,7 @@ export type GoalListItem = {
 
 export async function listGoals(
   db: Db,
-  args: { workspaceId: string },
+  args: { workspaceId: string; subAccountId: string },
 ): Promise<GoalListItem[]> {
   const rows = await db
     .select({
@@ -67,6 +67,7 @@ export async function listGoals(
     .where(
       and(
         eq(schema.goals.workspaceId, args.workspaceId),
+        eq(schema.goals.subAccountId, args.subAccountId),
         isNull(schema.goals.deletedAt),
       ),
     )
@@ -100,6 +101,8 @@ export async function createGoal(db: Db, input: CreateGoalInput) {
     throw new Error("Period start must be on or before period end");
   }
 
+  await assertGoalTargetInSubAccount(db, input);
+
   // Soundness: reject overlapping quotas for the same user/kind. Two
   // quota rows whose date ranges intersect would make
   // analytics.getActiveQuota() ambiguous (it picks the most recent and
@@ -107,6 +110,7 @@ export async function createGoal(db: Db, input: CreateGoalInput) {
   if (input.userId && input.kind === "quota") {
     const overlapping = await findOverlappingGoals(db, {
       workspaceId: input.workspaceId,
+      subAccountId: input.subAccountId,
       userId: input.userId,
       kind: input.kind,
       periodStart: input.periodStart,
@@ -143,6 +147,7 @@ export async function createGoal(db: Db, input: CreateGoalInput) {
 export type UpdateGoalInput = {
   goalId: string;
   workspaceId: string;
+  subAccountId: string;
   patch: Partial<{
     kind: GoalKind;
     metric: string;
@@ -176,6 +181,7 @@ export async function updateGoal(db: Db, input: UpdateGoalInput) {
       and(
         eq(schema.goals.id, input.goalId),
         eq(schema.goals.workspaceId, input.workspaceId),
+        eq(schema.goals.subAccountId, input.subAccountId),
         isNull(schema.goals.deletedAt),
       ),
     );
@@ -184,7 +190,7 @@ export async function updateGoal(db: Db, input: UpdateGoalInput) {
 
 export async function softDeleteGoal(
   db: Db,
-  args: { goalId: string; workspaceId: string },
+  args: { goalId: string; workspaceId: string; subAccountId: string },
 ) {
   await db
     .update(schema.goals)
@@ -193,6 +199,7 @@ export async function softDeleteGoal(
       and(
         eq(schema.goals.id, args.goalId),
         eq(schema.goals.workspaceId, args.workspaceId),
+        eq(schema.goals.subAccountId, args.subAccountId),
       ),
     );
   return { goalId: args.goalId };
@@ -204,6 +211,7 @@ export async function findOverlappingGoals(
   db: Db,
   args: {
     workspaceId: string;
+    subAccountId: string;
     userId: string;
     kind: GoalKind;
     periodStart: string;
@@ -213,6 +221,7 @@ export async function findOverlappingGoals(
 ): Promise<Array<{ id: string; periodStart: string; periodEnd: string; targetValue: string }>> {
   const conditions = [
     eq(schema.goals.workspaceId, args.workspaceId),
+    eq(schema.goals.subAccountId, args.subAccountId),
     eq(schema.goals.userId, args.userId),
     eq(schema.goals.kind, args.kind),
     isNull(schema.goals.deletedAt),
@@ -230,6 +239,45 @@ export async function findOverlappingGoals(
     })
     .from(schema.goals)
     .where(and(...conditions));
+}
+
+async function assertGoalTargetInSubAccount(db: Db, input: CreateGoalInput) {
+  if (input.userId) {
+    const [member] = await db
+      .select({ userId: schema.memberships.userId })
+      .from(schema.memberships)
+      .where(
+        and(
+          eq(schema.memberships.workspaceId, input.workspaceId),
+          eq(schema.memberships.subAccountId, input.subAccountId),
+          eq(schema.memberships.userId, input.userId),
+          isNull(schema.memberships.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!member) throw new Error("Goal user must belong to the selected sub-account");
+  }
+
+  if (input.salesRoleId) {
+    const [role] = await db
+      .select({ id: schema.salesRoles.id })
+      .from(schema.salesRoles)
+      .innerJoin(
+        schema.salesRoleAssignments,
+        eq(schema.salesRoleAssignments.salesRoleId, schema.salesRoles.id),
+      )
+      .where(
+        and(
+          eq(schema.salesRoles.id, input.salesRoleId),
+          eq(schema.salesRoles.workspaceId, input.workspaceId),
+          eq(schema.salesRoleAssignments.subAccountId, input.subAccountId),
+          isNull(schema.salesRoles.deletedAt),
+          isNull(schema.salesRoleAssignments.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!role) throw new Error("Goal sales role must belong to the selected sub-account");
+  }
 }
 
 export type QuotaContext = {
@@ -251,7 +299,7 @@ export type QuotaContext = {
  */
 export async function getQuotaContext(
   db: Db,
-  args: { workspaceId: string; userId: string; periodKind: PeriodKind },
+  args: { workspaceId: string; subAccountId: string; userId: string; periodKind: PeriodKind },
 ): Promise<QuotaContext> {
   const periods = lastNPeriods(args.periodKind, 3);
 
@@ -264,8 +312,10 @@ export async function getQuotaContext(
         .from(sql`sales s JOIN commission_recipients cr ON cr.sale_id = s.id`)
         .where(
           sql`s.workspace_id = ${args.workspaceId}
+            AND s.sub_account_id = ${args.subAccountId}
             AND s.deleted_at IS NULL
             AND cr.user_id = ${args.userId}
+            AND cr.sub_account_id = ${args.subAccountId}
             AND cr.deleted_at IS NULL
             AND s.closed_at >= ${p.from}
             AND s.closed_at < ${p.to}`,
@@ -291,6 +341,7 @@ export async function getQuotaContext(
     .where(
       and(
         eq(schema.goals.workspaceId, args.workspaceId),
+        eq(schema.goals.subAccountId, args.subAccountId),
         eq(schema.goals.userId, args.userId),
         eq(schema.goals.kind, "quota"),
         isNull(schema.goals.deletedAt),
@@ -359,6 +410,7 @@ export async function getTeamGoalsGrid(
     .where(
       and(
         eq(schema.memberships.workspaceId, args.workspaceId),
+        eq(schema.memberships.subAccountId, args.subAccountId),
         isNull(schema.memberships.deletedAt),
       ),
     )
@@ -378,6 +430,7 @@ export async function getTeamGoalsGrid(
     .where(
       and(
         eq(schema.goals.workspaceId, args.workspaceId),
+        eq(schema.goals.subAccountId, args.subAccountId),
         eq(schema.goals.kind, "quota"),
         isNull(schema.goals.deletedAt),
         lte(schema.goals.periodStart, latest),
@@ -396,8 +449,10 @@ export async function getTeamGoalsGrid(
             .from(sql`sales s JOIN commission_recipients cr ON cr.sale_id = s.id`)
             .where(
               sql`s.workspace_id = ${args.workspaceId}
+                AND s.sub_account_id = ${args.subAccountId}
                 AND s.deleted_at IS NULL
                 AND cr.user_id = ${m.userId}
+                AND cr.sub_account_id = ${args.subAccountId}
                 AND cr.deleted_at IS NULL
                 AND s.closed_at >= ${p.from}
                 AND s.closed_at < ${p.to}`,
@@ -446,9 +501,7 @@ function lastNPeriods(kind: PeriodKind, n: number): Array<{ from: Date; to: Date
   return out;
 }
 
-function threePeriodsAround(
-  kind: PeriodKind,
-): Array<{ from: Date; to: Date; label: string }> {
+function threePeriodsAround(kind: PeriodKind): Array<{ from: Date; to: Date; label: string }> {
   return [-1, 0, 1].map((offset) => {
     const { from, to } = periodBoundaryAt(kind, offset);
     return { from, to, label: labelFor(kind, from) };

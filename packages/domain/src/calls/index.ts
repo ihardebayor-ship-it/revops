@@ -11,7 +11,7 @@
 //   objection / disqualification / rescheduled → no event
 // Phase 1 M3 will add fine-grained mapping when sales link.
 
-import { and, asc, desc, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
 import { type Db, schema } from "@revops/db/client";
 import { emitFunnelEvent } from "../funnel/emit";
 
@@ -33,6 +33,12 @@ export type CreateCallInput = {
 
 export async function createCall(db: Db, input: CreateCallInput) {
   return db.transaction(async (tx) => {
+    await assertAssignableUsersInSubAccount(tx, {
+      workspaceId: input.workspaceId,
+      subAccountId: input.subAccountId,
+      userIds: [input.setterUserId, input.closerUserId],
+    });
+
     const [row] = await tx
       .insert(schema.calls)
       .values({
@@ -89,6 +95,12 @@ export type UpdateCallInput = {
 };
 
 export async function updateCall(db: Db, input: UpdateCallInput) {
+  await assertAssignableUsersInSubAccount(db, {
+    workspaceId: input.workspaceId,
+    subAccountId: input.subAccountId,
+    userIds: [input.patch.setterUserId, input.patch.closerUserId],
+  });
+
   const [row] = await db
     .update(schema.calls)
     .set({ ...input.patch, updatedAt: new Date() })
@@ -381,6 +393,34 @@ export async function getCall(db: Db, args: { callId: string; workspaceId: strin
     )
     .limit(1);
   return row ?? null;
+}
+
+async function assertAssignableUsersInSubAccount(
+  db: Db,
+  args: { workspaceId: string; subAccountId: string; userIds: Array<string | null | undefined> },
+) {
+  const userIds = [...new Set(args.userIds.filter((id): id is string => Boolean(id)))];
+  if (userIds.length === 0) return;
+
+  const rows = await db
+    .select({ userId: schema.memberships.userId })
+    .from(schema.memberships)
+    .where(
+      and(
+        eq(schema.memberships.workspaceId, args.workspaceId),
+        inArray(schema.memberships.userId, userIds),
+        isNull(schema.memberships.deletedAt),
+        or(
+          eq(schema.memberships.subAccountId, args.subAccountId),
+          eq(schema.memberships.accessRole, "workspace_admin"),
+        )!,
+      ),
+    );
+  const valid = new Set(rows.map((row) => row.userId));
+  const invalid = userIds.filter((id) => !valid.has(id));
+  if (invalid.length > 0) {
+    throw new Error("Assigned call users must belong to the selected sub-account");
+  }
 }
 
 // Suppress unused-import warning for asc — reserved for future sort variants.

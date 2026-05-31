@@ -17,7 +17,7 @@
 // (M4) reads commission_recipients to write per-recipient
 // commission_entries against installments.
 
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { type Db, schema } from "@revops/db/client";
 import { emitFunnelEvent } from "../funnel/emit";
 import { upsertCustomerByEmail } from "../customers/index";
@@ -120,6 +120,22 @@ export async function createSale(db: Db, input: CreateSaleInput): Promise<Create
   const currency = input.currency ?? "USD";
 
   return db.transaction(async (tx) => {
+    if (input.linkedCallId) {
+      const [call] = await tx
+        .select({ id: schema.calls.id })
+        .from(schema.calls)
+        .where(
+          and(
+            eq(schema.calls.id, input.linkedCallId),
+            eq(schema.calls.workspaceId, input.workspaceId),
+            eq(schema.calls.subAccountId, input.subAccountId),
+            isNull(schema.calls.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (!call) throw new Error("Linked call must belong to the selected sub-account");
+    }
+
     // 1. Customer upsert
     const customer = await upsertCustomerByEmail(tx, {
       workspaceId: input.workspaceId,
@@ -257,6 +273,13 @@ export async function createSale(db: Db, input: CreateSaleInput): Promise<Create
       );
     }
 
+    await assertRecipientsInSubAccount(tx, {
+      workspaceId: input.workspaceId,
+      subAccountId: input.subAccountId,
+      closedAt,
+      recipients,
+    });
+
     // Lookup the latest version_id for each role. Without it the engine
     // can't snapshot the role-state used at sale-create time.
     const roleIds = recipients.map((r) => r.salesRoleId);
@@ -294,6 +317,20 @@ export async function createSale(db: Db, input: CreateSaleInput): Promise<Create
       });
     }
 
+    if (input.linkedCallId) {
+      await tx
+        .update(schema.calls)
+        .set({ linkedSaleId: sale.id, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.calls.id, input.linkedCallId),
+            eq(schema.calls.workspaceId, input.workspaceId),
+            eq(schema.calls.subAccountId, input.subAccountId),
+            isNull(schema.calls.deletedAt),
+          ),
+        );
+    }
+
     // 5. Funnel event
     await emitFunnelEvent(tx, {
       workspaceId: input.workspaceId,
@@ -316,6 +353,49 @@ export async function createSale(db: Db, input: CreateSaleInput): Promise<Create
       paymentPlanId,
     };
   });
+}
+
+async function assertRecipientsInSubAccount(
+  db: Db,
+  args: {
+    workspaceId: string;
+    subAccountId: string;
+    closedAt: Date;
+    recipients: SaleRecipientInput[];
+  },
+) {
+  const userIds = [...new Set(args.recipients.map((recipient) => recipient.userId))];
+  const salesRoleIds = [...new Set(args.recipients.map((recipient) => recipient.salesRoleId))];
+  const assignments = await db
+    .select({
+      userId: schema.salesRoleAssignments.userId,
+      salesRoleId: schema.salesRoleAssignments.salesRoleId,
+    })
+    .from(schema.salesRoleAssignments)
+    .innerJoin(schema.salesRoles, eq(schema.salesRoles.id, schema.salesRoleAssignments.salesRoleId))
+    .where(
+      and(
+        eq(schema.salesRoleAssignments.workspaceId, args.workspaceId),
+        eq(schema.salesRoleAssignments.subAccountId, args.subAccountId),
+        inArray(schema.salesRoleAssignments.userId, userIds),
+        inArray(schema.salesRoleAssignments.salesRoleId, salesRoleIds),
+        isNull(schema.salesRoleAssignments.deletedAt),
+        isNull(schema.salesRoles.deletedAt),
+        or(
+          isNull(schema.salesRoleAssignments.effectiveTo),
+          sql`${schema.salesRoleAssignments.effectiveTo} > ${args.closedAt}`,
+        )!,
+      ),
+    );
+  const validPairs = new Set(
+    assignments.map((assignment) => `${assignment.userId}:${assignment.salesRoleId}`),
+  );
+  const invalid = args.recipients.filter(
+    (recipient) => !validPairs.has(`${recipient.userId}:${recipient.salesRoleId}`),
+  );
+  if (invalid.length > 0) {
+    throw new Error("Commission recipients must belong to the selected sub-account");
+  }
 }
 
 export async function listSales(

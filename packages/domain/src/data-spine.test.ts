@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const callsSource = readFileSync(new URL("./calls/index.ts", import.meta.url), "utf8");
+const customersSource = readFileSync(new URL("./customers/index.ts", import.meta.url), "utf8");
+const goalsSource = readFileSync(new URL("./goals/index.ts", import.meta.url), "utf8");
 const salesSource = readFileSync(new URL("./sales/index.ts", import.meta.url), "utf8");
 
 describe("data spine tenant guards", () => {
@@ -35,6 +37,30 @@ describe("data spine tenant guards", () => {
     expect(salesSource).toContain("closedFrom?: Date | null");
     expect(salesSource).toContain("gte(schema.sales.closedAt, filter.closedFrom)");
     expect(salesSource).toContain("lte(schema.sales.closedAt, filter.closedTo)");
+  });
+
+  it("validates assignment and commission targets against the selected sub-account", () => {
+    expect(callsSource).toContain("assertAssignableUsersInSubAccount");
+    expect(callsSource).toContain("Assigned call users must belong to the selected sub-account");
+    expect(salesSource).toContain("assertRecipientsInSubAccount");
+    expect(salesSource).toContain("Commission recipients must belong to the selected sub-account");
+    expect(salesSource).toContain("Linked call must belong to the selected sub-account");
+  });
+
+  it("keeps goals and team attainment scoped to the selected sub-account", () => {
+    expect(goalsSource).toContain("eq(schema.goals.subAccountId, args.subAccountId)");
+    expect(goalsSource).toContain("eq(schema.memberships.subAccountId, args.subAccountId)");
+    expect(goalsSource).toContain("AND s.sub_account_id = ${args.subAccountId}");
+    expect(goalsSource).toContain("AND cr.sub_account_id = ${args.subAccountId}");
+    expect(goalsSource).toContain("assertGoalTargetInSubAccount");
+  });
+
+  it("keeps customer upsert and detail scoped to the selected sub-account", () => {
+    expect(customersSource).toContain("Upsert by (sub_account_id, primary_email)");
+    expect(customersSource).toContain("eq(schema.customers.subAccountId, input.subAccountId)");
+    expect(customersSource).toContain("eq(schema.customers.subAccountId, args.subAccountId)");
+    expect(customersSource).toContain("eq(schema.sales.subAccountId, args.subAccountId)");
+    expect(customersSource).toContain("eq(schema.calls.subAccountId, args.subAccountId)");
   });
 });
 

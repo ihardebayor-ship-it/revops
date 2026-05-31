@@ -15,7 +15,7 @@ export type UpsertCustomerInput = {
 };
 
 /**
- * Upsert by (workspace_id, primary_email). Returns the customer's id —
+ * Upsert by (sub_account_id, primary_email). Returns the customer's id —
  * either the existing one or the newly inserted one. Updates name/phone
  * if the upsert input provides values and the row currently has nulls
  * (don't overwrite explicit edits).
@@ -34,7 +34,9 @@ export async function upsertCustomerByEmail(
     .where(
       and(
         eq(schema.customers.workspaceId, input.workspaceId),
+        eq(schema.customers.subAccountId, input.subAccountId),
         eq(schema.customers.primaryEmail, input.primaryEmail.toLowerCase()),
+        isNull(schema.customers.deletedAt),
       ),
     )
     .limit(1);
@@ -47,7 +49,14 @@ export async function upsertCustomerByEmail(
       await db
         .update(schema.customers)
         .set({ ...patch, updatedAt: new Date() })
-        .where(eq(schema.customers.id, existing[0].id));
+        .where(
+          and(
+            eq(schema.customers.id, existing[0].id),
+            eq(schema.customers.workspaceId, input.workspaceId),
+            eq(schema.customers.subAccountId, input.subAccountId),
+            isNull(schema.customers.deletedAt),
+          ),
+        );
     }
     return { id: existing[0].id, created: false };
   }
@@ -69,7 +78,7 @@ export async function upsertCustomerByEmail(
 
 export async function getCustomer(
   db: Db,
-  args: { customerId: string; workspaceId: string },
+  args: { customerId: string; workspaceId: string; subAccountId: string },
 ) {
   const [row] = await db
     .select()
@@ -78,6 +87,8 @@ export async function getCustomer(
       and(
         eq(schema.customers.id, args.customerId),
         eq(schema.customers.workspaceId, args.workspaceId),
+        eq(schema.customers.subAccountId, args.subAccountId),
+        isNull(schema.customers.deletedAt),
       ),
     )
     .limit(1);
@@ -124,15 +135,10 @@ export async function listCustomers(
       and(eq(schema.sales.customerId, schema.customers.id), isNull(schema.sales.deletedAt)),
     )
     .where(
-      and(
-        eq(schema.customers.subAccountId, args.subAccountId),
-        isNull(schema.customers.deletedAt),
-      ),
+      and(eq(schema.customers.subAccountId, args.subAccountId), isNull(schema.customers.deletedAt)),
     )
     .groupBy(schema.customers.id)
-    .orderBy(
-      sql`coalesce(max(${schema.sales.closedAt}), ${schema.customers.createdAt}) desc`,
-    )
+    .orderBy(sql`coalesce(max(${schema.sales.closedAt}), ${schema.customers.createdAt}) desc`)
     .limit(limit);
   return rows;
 }
@@ -140,11 +146,11 @@ export async function listCustomers(
 /**
  * Aggregated detail view for a single customer: header + sales + calls
  * + commission entries across those sales + agent_facts scoped to this
- * customer. Caller passes workspaceId so the row is scoped.
+ * customer. Caller passes workspaceId/subAccountId so the row is scoped.
  */
 export async function getCustomerDetail(
   db: Db,
-  args: { customerId: string; workspaceId: string },
+  args: { customerId: string; workspaceId: string; subAccountId: string },
 ) {
   const customer = await getCustomer(db, args);
   if (!customer) return null;
@@ -164,7 +170,12 @@ export async function getCustomerDetail(
       })
       .from(schema.sales)
       .where(
-        and(eq(schema.sales.customerId, args.customerId), isNull(schema.sales.deletedAt)),
+        and(
+          eq(schema.sales.customerId, args.customerId),
+          eq(schema.sales.workspaceId, args.workspaceId),
+          eq(schema.sales.subAccountId, args.subAccountId),
+          isNull(schema.sales.deletedAt),
+        ),
       )
       .orderBy(desc(schema.sales.closedAt)),
     db
@@ -182,12 +193,14 @@ export async function getCustomerDetail(
         recordingUrl: schema.calls.recordingUrl,
       })
       .from(schema.calls)
-      .leftJoin(
-        schema.dispositions,
-        eq(schema.dispositions.id, schema.calls.dispositionId),
-      )
+      .leftJoin(schema.dispositions, eq(schema.dispositions.id, schema.calls.dispositionId))
       .where(
-        and(eq(schema.calls.customerId, args.customerId), isNull(schema.calls.deletedAt)),
+        and(
+          eq(schema.calls.customerId, args.customerId),
+          eq(schema.calls.workspaceId, args.workspaceId),
+          eq(schema.calls.subAccountId, args.subAccountId),
+          isNull(schema.calls.deletedAt),
+        ),
       )
       .orderBy(desc(schema.calls.appointmentAt)),
     db
@@ -203,7 +216,14 @@ export async function getCustomerDetail(
       })
       .from(schema.commissionEntries)
       .innerJoin(schema.sales, eq(schema.sales.id, schema.commissionEntries.saleId))
-      .where(eq(schema.sales.customerId, args.customerId))
+      .where(
+        and(
+          eq(schema.sales.customerId, args.customerId),
+          eq(schema.sales.workspaceId, args.workspaceId),
+          eq(schema.sales.subAccountId, args.subAccountId),
+          eq(schema.commissionEntries.subAccountId, args.subAccountId),
+        ),
+      )
       .orderBy(asc(schema.commissionEntries.availableAt)),
     db
       .select({

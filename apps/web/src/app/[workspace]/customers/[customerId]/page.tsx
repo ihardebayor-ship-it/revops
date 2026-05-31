@@ -40,11 +40,14 @@ export default async function CustomerDetailPage({
 }) {
   const { workspace: slug, customerId } = await params;
   const ctx = await resolveWorkspaceBySlug(slug);
+  const subAccountId = ctx.authCtx.subAccountId;
+  if (!subAccountId) notFound();
 
   const detail = await withTenant(ctx.authCtx, (db) =>
     customersDomain.getCustomerDetail(db, {
       customerId,
       workspaceId: ctx.workspace.id,
+      subAccountId,
     }),
   );
   if (!detail) notFound();
@@ -125,9 +128,7 @@ export default async function CustomerDetailPage({
 
       {/* Sales */}
       <section>
-        <h2 className="mb-2 text-sm font-medium text-zinc-300">
-          Sales · {sales.length}
-        </h2>
+        <h2 className="mb-2 text-sm font-medium text-zinc-300">Sales · {sales.length}</h2>
         {sales.length === 0 ? (
           <p className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-400">
             No sales recorded.
@@ -135,10 +136,7 @@ export default async function CustomerDetailPage({
         ) : (
           <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
             {sales.map((s) => (
-              <li
-                key={s.id}
-                className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-sm"
-              >
+              <li key={s.id} className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-sm">
                 <a
                   href={`/${slug}/sales/${s.id}`}
                   className="col-span-5 text-zinc-100 hover:text-blue-400"
@@ -171,9 +169,7 @@ export default async function CustomerDetailPage({
 
       {/* Calls */}
       <section>
-        <h2 className="mb-2 text-sm font-medium text-zinc-300">
-          Calls · {calls.length}
-        </h2>
+        <h2 className="mb-2 text-sm font-medium text-zinc-300">Calls · {calls.length}</h2>
         {calls.length === 0 ? (
           <p className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-400">
             No calls logged.
@@ -181,10 +177,7 @@ export default async function CustomerDetailPage({
         ) : (
           <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
             {calls.map((c) => (
-              <li
-                key={c.id}
-                className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-sm"
-              >
+              <li key={c.id} className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-sm">
                 <a
                   href={`/${slug}/calls/${c.id}`}
                   className="col-span-4 text-zinc-100 hover:text-blue-400"
@@ -200,9 +193,7 @@ export default async function CustomerDetailPage({
                 <span className="col-span-2">
                   {c.dispositionLabel ? (
                     <Pill
-                      variant={
-                        DISPOSITION_VARIANT[c.dispositionCategory ?? "other"] ?? "neutral"
-                      }
+                      variant={DISPOSITION_VARIANT[c.dispositionCategory ?? "other"] ?? "neutral"}
                     >
                       {c.dispositionLabel}
                     </Pill>
@@ -212,9 +203,7 @@ export default async function CustomerDetailPage({
                 </span>
                 <span className="col-span-1 text-right text-xs text-zinc-500">
                   {c.sourceIntegration && (
-                    <span className="rounded bg-zinc-900 px-1.5 py-0.5">
-                      {c.sourceIntegration}
-                    </span>
+                    <span className="rounded bg-zinc-900 px-1.5 py-0.5">{c.sourceIntegration}</span>
                   )}
                 </span>
               </li>
@@ -250,10 +239,7 @@ export default async function CustomerDetailPage({
             </div>
             <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
               {entries.slice(0, 30).map((e) => (
-                <li
-                  key={e.id}
-                  className="grid grid-cols-12 items-center gap-3 px-4 py-2 text-sm"
-                >
+                <li key={e.id} className="grid grid-cols-12 items-center gap-3 px-4 py-2 text-sm">
                   <span className="col-span-3 font-mono text-xs text-zinc-500">
                     {e.recipientUserId.slice(0, 8)}
                   </span>
@@ -267,7 +253,9 @@ export default async function CustomerDetailPage({
                   </span>
                   <span className="col-span-3 text-right text-xs text-zinc-500">
                     {e.paidAt ? (
-                      <>paid <Time value={e.paidAt} /></>
+                      <>
+                        paid <Time value={e.paidAt} />
+                      </>
                     ) : e.availableAt ? (
                       <Time value={e.availableAt} />
                     ) : null}
@@ -330,9 +318,7 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-2">
-      <dt className="w-24 shrink-0 text-xs uppercase tracking-wider text-zinc-500">
-        {label}
-      </dt>
+      <dt className="w-24 shrink-0 text-xs uppercase tracking-wider text-zinc-500">{label}</dt>
       <dd className="flex-1 text-zinc-200">{children}</dd>
     </div>
   );

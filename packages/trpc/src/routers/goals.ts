@@ -17,8 +17,13 @@ const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format");
 
 export const goalsRouter = router({
   list: authedProcedure.query(async ({ ctx }) => {
-    if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-    return goalsDomain.listGoals(ctx.db, { workspaceId: ctx.user.workspaceId });
+    if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
+      throw new TRPCError({ code: "BAD_REQUEST" });
+    }
+    return goalsDomain.listGoals(ctx.db, {
+      workspaceId: ctx.user.workspaceId,
+      subAccountId: ctx.user.subAccountId,
+    });
   }),
 
   // Hero data: per-period team grid for the manager's settings/goals page.
@@ -44,9 +49,12 @@ export const goalsRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+      if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
+        throw new TRPCError({ code: "BAD_REQUEST" });
+      }
       return goalsDomain.getQuotaContext(ctx.db, {
         workspaceId: ctx.user.workspaceId,
+        subAccountId: ctx.user.subAccountId,
         userId: input.userId,
         periodKind: input.periodKind,
       });
@@ -103,10 +111,13 @@ export const goalsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+      if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
+        throw new TRPCError({ code: "BAD_REQUEST" });
+      }
       return goalsDomain.updateGoal(ctx.db, {
         goalId: input.goalId,
         workspaceId: ctx.user.workspaceId,
+        subAccountId: ctx.user.subAccountId,
         patch: {
           kind: input.kind,
           metric: input.metric,
@@ -122,10 +133,13 @@ export const goalsRouter = router({
   softDelete: authedProcedureWith("salesrole:update")
     .input(z.object({ goalId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+      if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
+        throw new TRPCError({ code: "BAD_REQUEST" });
+      }
       return goalsDomain.softDeleteGoal(ctx.db, {
         goalId: input.goalId,
         workspaceId: ctx.user.workspaceId,
+        subAccountId: ctx.user.subAccountId,
       });
     }),
 });
