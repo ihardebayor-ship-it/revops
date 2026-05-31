@@ -19,7 +19,18 @@ Recommended alert thresholds:
 
 ## Replay Procedure
 
-Use the migration/owner database URL for inspection. Do not log raw payloads in shared channels.
+Preferred path: use the tenant-scoped ops view at `/{workspace}/integrations/webhooks`.
+It lists inbound events by provider/status and exposes replay without showing raw payloads.
+
+Replay from the UI:
+
+1. Open `Integrations` → `Webhook events`.
+2. Filter to `Failed` or the affected provider.
+3. Confirm the row's `provider_account_id` belongs to the selected workspace/sub-account.
+4. Click `Replay`.
+5. Refresh or keep the filter open until status moves from `pending` to `processed`.
+
+Manual fallback: use the migration/owner database URL for inspection. Do not log raw payloads in shared channels.
 
 1. Identify failed rows:
 
@@ -53,6 +64,15 @@ from webhook_inbound_events
 where id = '<inbound-event-id>';
 ```
 
+## Status Semantics
+
+- `pending`: `processed_at` is null and `error` is null.
+- `processed`: `processed_at` is set and `error` is null.
+- `failed`: `error` is set, regardless of `processed_at`.
+
+Replay clears `processed_at` and `error`, then enqueues the provider-specific Inngest event.
+Handlers are expected to remain idempotent: derived rows dedupe by tenant scope plus provider external ids, and funnel events dedupe through `source_event_id`/metadata hashing.
+
 ## Tenant Safety Checks
 
 - Idempotency key is `(source, provider_account_id, external_id)`.
@@ -60,3 +80,16 @@ where id = '<inbound-event-id>';
 - Aircall `provider_account_id` is Aircall `data.user.id`.
 - Fathom `provider_account_id` is derived from a signed local webhook scope key.
 - Processors resolve tenant context before writes and run writes through `withTenant`.
+- The ops list/replay route does not select or return raw `payload`.
+- Replay is only allowed for events whose `(source, provider_account_id)` matches a provider account connected to the caller's workspace/sub-account.
+
+## Downstream Provenance Decision
+
+Do not add `provider_account_id` columns to derived entities until there is a concrete analytics or reconciliation query that needs them directly.
+
+Current provenance is sufficient for Sprint 2:
+
+- `webhook_inbound_events` owns provider-level idempotency with `(source, provider_account_id, external_id)`.
+- `calls`, `sales`, `optins`, and `applications` dedupe inside tenant scope with `sub_account_id + source_integration + external_id`.
+- `funnel_events.source_event_id` points back to the inbound webhook row, which carries `provider_account_id`.
+- GHL provider account maps to one sub-account location; Aircall/Fathom tenant resolution happens before writes.

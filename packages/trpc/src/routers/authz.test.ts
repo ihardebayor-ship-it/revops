@@ -6,6 +6,7 @@ const routersDir = new URL(".", import.meta.url);
 const contextSource = readFileSync(new URL("../context.ts", import.meta.url), "utf8");
 const callsSource = readFileSync(new URL("./calls.ts", import.meta.url), "utf8");
 const salesSource = readFileSync(new URL("./sales.ts", import.meta.url), "utf8");
+const webhooksSource = readFileSync(new URL("./webhooks.ts", import.meta.url), "utf8");
 
 describe("router mutation authorization", () => {
   it("does not define mutations from plain authedProcedure", () => {
@@ -35,6 +36,33 @@ describe("data spine guards", () => {
     expect(callsSource).toContain("appointmentTo");
     expect(salesSource).toContain("closedFrom");
     expect(salesSource).toContain("closedTo");
+  });
+});
+
+describe("webhook ops safeguards", () => {
+  it("does not expose raw inbound payloads from the ops list", () => {
+    expect(webhooksSource).toContain("listInbound");
+    expect(webhooksSource).toContain("externalId: schema.webhookInboundEvents.externalId");
+    expect(webhooksSource).not.toContain("payload: schema.webhookInboundEvents.payload");
+  });
+
+  it("scopes inbound replay by connected provider account before dispatch", () => {
+    expect(webhooksSource).toContain("const providerPairs = await listAllowedProviderAccounts");
+    expect(webhooksSource).toContain(
+      "const providerCondition = buildProviderCondition(providerPairs)",
+    );
+    expect(webhooksSource).toContain(
+      "and(eq(schema.webhookInboundEvents.id, input.inboundEventId), providerCondition)",
+    );
+    expect(webhooksSource).toContain("eq(schema.webhookInboundEvents.providerAccountId");
+  });
+
+  it("rejects unsupported webhook sources during replay", () => {
+    expect(webhooksSource).toContain("const eventName = getReplayEventName(row.source)");
+    expect(webhooksSource).toContain("Unsupported webhook source");
+    expect(webhooksSource).toContain('if (source === "gohighlevel") return "ghl.webhook.received"');
+    expect(webhooksSource).toContain('if (source === "aircall") return "aircall.webhook.received"');
+    expect(webhooksSource).toContain('if (source === "fathom") return "fathom.webhook.received"');
   });
 });
 
