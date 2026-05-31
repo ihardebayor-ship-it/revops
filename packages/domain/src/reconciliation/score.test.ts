@@ -95,6 +95,34 @@ describe("scoreCallSaleMatch", () => {
     expect(r.signals).toContain("date_proximity");
   });
 
+  it("date proximity alone is not a confident match", () => {
+    const r = scoreCallSaleMatch({
+      call: {
+        contactEmail: null,
+        contactPhone: null,
+        contactName: null,
+        appointmentAt: new Date("2026-04-25T12:00:00Z"),
+      },
+      sale: baseSale,
+    });
+    expect(r.signals).toEqual(["date_proximity"]);
+    expect(r.score).toBeLessThan(0.3);
+  });
+
+  it("name overlap alone is not a confident match", () => {
+    const r = scoreCallSaleMatch({
+      call: {
+        contactEmail: null,
+        contactPhone: null,
+        contactName: "Alex",
+        appointmentAt: null,
+      },
+      sale: baseSale,
+    });
+    expect(r.signals).toEqual(["name_overlap"]);
+    expect(r.score).toBeLessThan(0.3);
+  });
+
   it("no signals → score 0", () => {
     const r = scoreCallSaleMatch({
       call: {

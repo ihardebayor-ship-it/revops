@@ -176,7 +176,11 @@ export function scoreCallSaleMatch(input: ScoreInput): Score {
     }
   }
 
-  const score = weightFloor === 0 ? 0 : Math.min(weightSum / weightFloor, 1);
+  const rawScore = weightFloor === 0 ? 0 : Math.min(weightSum / weightFloor, 1);
+  const hasIdentitySignal = signals.some(
+    (signal) => signal === "email_exact" || signal === "email_fuzzy" || signal === "phone_match",
+  );
+  const score = hasIdentitySignal ? rawScore : Math.min(rawScore, 0.25);
   return { score: Number(score.toFixed(3)), signals };
 }
 
@@ -255,6 +259,7 @@ export async function suggestLinksForSale(
     .from(schema.calls)
     .where(
       and(
+        eq(schema.calls.workspaceId, args.workspaceId),
         eq(schema.calls.subAccountId, sale.subAccountId),
         isNull(schema.calls.deletedAt),
         isNull(schema.calls.linkedSaleId),

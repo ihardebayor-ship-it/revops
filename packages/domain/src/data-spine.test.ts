@@ -79,6 +79,8 @@ describe("data spine tenant guards", () => {
       "refundConditions.push(eq(schema.sales.subAccountId, args.subAccountId))",
     );
     expect(reconciliationSource).toContain("eq(schema.customers.subAccountId, sale.subAccountId)");
+    expect(reconciliationSource).toContain("eq(schema.calls.workspaceId, args.workspaceId)");
+    expect(reconciliationSource).toContain("eq(schema.calls.subAccountId, sale.subAccountId)");
   });
 });
 
