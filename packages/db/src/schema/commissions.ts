@@ -15,7 +15,12 @@ import { user } from "./auth";
 import { workspaces, subAccounts } from "./tenancy";
 import { sales, paymentPlanInstallments } from "./sales";
 import { salesRoles, salesRoleVersions } from "./roles";
-import { commissionRuleTypeEnum, commissionStatusEnum, installmentStatusEnum, periodKindEnum } from "./enums";
+import {
+  commissionRuleTypeEnum,
+  commissionStatusEnum,
+  installmentStatusEnum,
+  periodKindEnum,
+} from "./enums";
 
 export const commissionRules = pgTable(
   "commission_rules",
@@ -138,6 +143,12 @@ export const commissionEntries = pgTable(
   (t) => ({
     saleIdx: index("commission_entries_sale_idx").on(t.saleId),
     recipientIdx: index("commission_entries_recipient_idx").on(t.recipientUserId),
+    recipientStatusAvailableIdx: index("commission_entries_sub_recipient_status_available_idx").on(
+      t.subAccountId,
+      t.recipientUserId,
+      t.status,
+      t.availableAt,
+    ),
     statusIdx: index("commission_entries_status_idx").on(t.status),
     periodIdx: index("commission_entries_period_idx").on(t.periodId),
     availableIdx: index("commission_entries_available_idx").on(t.availableAt),

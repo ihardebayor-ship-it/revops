@@ -1,11 +1,4 @@
-import {
-  index,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { workspaces, subAccounts } from "./tenancy";
 import { dataSourceKindEnum } from "./enums";
@@ -66,5 +59,9 @@ export const dataSourceConnections = pgTable(
   (t) => ({
     dataSourceIdx: index("data_source_connections_ds_idx").on(t.dataSourceId),
     toolTypeIdx: index("data_source_connections_tool_idx").on(t.toolType),
+    toolExternalIdx: index("data_source_connections_tool_external_idx").on(
+      t.toolType,
+      t.externalAccountId,
+    ),
   }),
 );

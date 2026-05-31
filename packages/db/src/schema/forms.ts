@@ -1,13 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  index,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { workspaces, subAccounts } from "./tenancy";
 import { dataSourceConnections } from "./data-sources";
@@ -51,7 +43,11 @@ export const optins = pgTable(
     createdBy: text("created_by").references(() => user.id),
   },
   (t) => ({
-    externalUq: unique("optins_external_uq").on(t.sourceIntegration, t.externalId),
+    externalUq: unique("optins_sub_source_external_uq").on(
+      t.subAccountId,
+      t.sourceIntegration,
+      t.externalId,
+    ),
     subEmailIdx: index("optins_sub_email_idx").on(t.subAccountId, t.email),
     submittedIdx: index("optins_submitted_idx").on(t.submittedAt),
     // Hot path: SLA sweep finds optins with no contact past the SLA window.
@@ -85,7 +81,11 @@ export const applications = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    externalUq: unique("applications_external_uq").on(t.sourceIntegration, t.externalId),
+    externalUq: unique("applications_sub_source_external_uq").on(
+      t.subAccountId,
+      t.sourceIntegration,
+      t.externalId,
+    ),
     subEmailIdx: index("applications_sub_email_idx").on(t.subAccountId, t.email),
   }),
 );

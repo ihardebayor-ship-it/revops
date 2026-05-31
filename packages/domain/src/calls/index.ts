@@ -11,7 +11,7 @@
 //   objection / disqualification / rescheduled → no event
 // Phase 1 M3 will add fine-grained mapping when sales link.
 
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lte } from "drizzle-orm";
 import { type Db, schema } from "@revops/db/client";
 import { emitFunnelEvent } from "../funnel/emit";
 
@@ -75,6 +75,7 @@ export async function createCall(db: Db, input: CreateCallInput) {
 export type UpdateCallInput = {
   callId: string;
   workspaceId: string;
+  subAccountId: string;
   patch: {
     contactName?: string | null;
     contactEmail?: string | null;
@@ -95,6 +96,7 @@ export async function updateCall(db: Db, input: UpdateCallInput) {
       and(
         eq(schema.calls.id, input.callId),
         eq(schema.calls.workspaceId, input.workspaceId),
+        eq(schema.calls.subAccountId, input.subAccountId),
         isNull(schema.calls.deletedAt),
       ),
     )
@@ -132,6 +134,7 @@ export async function setDisposition(db: Db, input: SetDispositionInput) {
         and(
           eq(schema.calls.id, input.callId),
           eq(schema.calls.workspaceId, input.workspaceId),
+          eq(schema.calls.subAccountId, input.subAccountId),
           isNull(schema.calls.deletedAt),
         ),
       )
@@ -181,6 +184,7 @@ export async function setOutcome(db: Db, input: SetOutcomeInput) {
         and(
           eq(schema.calls.id, input.callId),
           eq(schema.calls.workspaceId, input.workspaceId),
+          eq(schema.calls.subAccountId, input.subAccountId),
           isNull(schema.calls.deletedAt),
         ),
       )
@@ -192,7 +196,17 @@ export async function setOutcome(db: Db, input: SetOutcomeInput) {
     if (input.pitchedAt !== undefined) patch.pitchedAt = input.pitchedAt;
     if (input.completedAt !== undefined) patch.completedAt = input.completedAt;
     if (input.durationSeconds !== undefined) patch.durationSeconds = input.durationSeconds;
-    await tx.update(schema.calls).set(patch).where(eq(schema.calls.id, input.callId));
+    await tx
+      .update(schema.calls)
+      .set(patch)
+      .where(
+        and(
+          eq(schema.calls.id, input.callId),
+          eq(schema.calls.workspaceId, input.workspaceId),
+          eq(schema.calls.subAccountId, input.subAccountId),
+          isNull(schema.calls.deletedAt),
+        ),
+      );
 
     // Emit "showed" if this is the first time we're recording it. The
     // funnel/emit dedup makes a no-op if it was already emitted.
@@ -246,6 +260,20 @@ export type LinkOptinInput = {
 export async function linkOptin(db: Db, input: LinkOptinInput) {
   return db.transaction(async (tx) => {
     const now = new Date();
+    const [call] = await tx
+      .select({ id: schema.calls.id })
+      .from(schema.calls)
+      .where(
+        and(
+          eq(schema.calls.id, input.callId),
+          eq(schema.calls.workspaceId, input.workspaceId),
+          eq(schema.calls.subAccountId, input.subAccountId),
+          isNull(schema.calls.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!call) throw new Error("Call not found");
+
     const [updated] = await tx
       .update(schema.optins)
       .set({ contactedCallId: input.callId, contactedAt: now })
@@ -253,6 +281,7 @@ export async function linkOptin(db: Db, input: LinkOptinInput) {
         and(
           eq(schema.optins.id, input.optinId),
           eq(schema.optins.workspaceId, input.workspaceId),
+          eq(schema.optins.subAccountId, input.subAccountId),
           isNull(schema.optins.contactedCallId),
         ),
       )
@@ -276,7 +305,7 @@ export async function linkOptin(db: Db, input: LinkOptinInput) {
 
 export async function softDeleteCall(
   db: Db,
-  args: { callId: string; workspaceId: string },
+  args: { callId: string; workspaceId: string; subAccountId: string },
 ) {
   const [row] = await db
     .update(schema.calls)
@@ -285,6 +314,7 @@ export async function softDeleteCall(
       and(
         eq(schema.calls.id, args.callId),
         eq(schema.calls.workspaceId, args.workspaceId),
+        eq(schema.calls.subAccountId, args.subAccountId),
         isNull(schema.calls.deletedAt),
       ),
     )
@@ -297,6 +327,8 @@ export type ListCallsFilter = {
   setterUserId?: string | null;
   closerUserId?: string | null;
   contactEmail?: string | null;
+  appointmentFrom?: Date | null;
+  appointmentTo?: Date | null;
   limit?: number;
 };
 
@@ -309,6 +341,9 @@ export async function listCalls(db: Db, filter: ListCallsFilter) {
   if (filter.setterUserId) conditions.push(eq(schema.calls.setterUserId, filter.setterUserId));
   if (filter.closerUserId) conditions.push(eq(schema.calls.closerUserId, filter.closerUserId));
   if (filter.contactEmail) conditions.push(eq(schema.calls.contactEmail, filter.contactEmail));
+  if (filter.appointmentFrom)
+    conditions.push(gte(schema.calls.appointmentAt, filter.appointmentFrom));
+  if (filter.appointmentTo) conditions.push(lte(schema.calls.appointmentAt, filter.appointmentTo));
 
   return db
     .select({

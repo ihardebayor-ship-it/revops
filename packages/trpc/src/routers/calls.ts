@@ -9,6 +9,8 @@ export const callsRouter = router({
       z.object({
         setterUserId: z.string().nullable().optional(),
         closerUserId: z.string().nullable().optional(),
+        appointmentFrom: z.string().datetime().nullable().optional(),
+        appointmentTo: z.string().datetime().nullable().optional(),
         limit: z.number().int().min(1).max(200).default(50),
       }),
     )
@@ -20,6 +22,8 @@ export const callsRouter = router({
         subAccountId: ctx.user.subAccountId,
         setterUserId: input.setterUserId ?? null,
         closerUserId: input.closerUserId ?? null,
+        appointmentFrom: input.appointmentFrom ? new Date(input.appointmentFrom) : null,
+        appointmentTo: input.appointmentTo ? new Date(input.appointmentTo) : null,
         limit: input.limit,
       });
     }),
@@ -27,7 +31,9 @@ export const callsRouter = router({
   byId: authedProcedure
     .input(z.object({ callId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+      if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
+        throw new TRPCError({ code: "BAD_REQUEST" });
+      }
       return callsDomain.getCall(ctx.db, {
         callId: input.callId,
         workspaceId: ctx.user.workspaceId,
@@ -84,7 +90,9 @@ export const callsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+      if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
+        throw new TRPCError({ code: "BAD_REQUEST" });
+      }
       const patch: Record<string, unknown> = {};
       if (input.contactName !== undefined) patch.contactName = input.contactName;
       if (input.contactEmail !== undefined) patch.contactEmail = input.contactEmail;
@@ -97,6 +105,7 @@ export const callsRouter = router({
       return callsDomain.updateCall(ctx.db, {
         callId: input.callId,
         workspaceId: ctx.user.workspaceId,
+        subAccountId: ctx.user.subAccountId,
         patch,
       });
     }),
@@ -162,10 +171,13 @@ export const callsRouter = router({
   softDelete: authedProcedureWith("call:delete")
     .input(z.object({ callId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+      if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
+        throw new TRPCError({ code: "BAD_REQUEST" });
+      }
       return callsDomain.softDeleteCall(ctx.db, {
         callId: input.callId,
         workspaceId: ctx.user.workspaceId,
+        subAccountId: ctx.user.subAccountId,
       });
     }),
 });

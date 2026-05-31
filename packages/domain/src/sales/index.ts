@@ -17,7 +17,7 @@
 // (M4) reads commission_recipients to write per-recipient
 // commission_entries against installments.
 
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { type Db, schema } from "@revops/db/client";
 import { emitFunnelEvent } from "../funnel/emit";
 import { upsertCustomerByEmail } from "../customers/index";
@@ -320,7 +320,13 @@ export async function createSale(db: Db, input: CreateSaleInput): Promise<Create
 
 export async function listSales(
   db: Db,
-  filter: { subAccountId: string; onlyUnlinked?: boolean; limit?: number },
+  filter: {
+    subAccountId: string;
+    onlyUnlinked?: boolean;
+    closedFrom?: Date | null;
+    closedTo?: Date | null;
+    limit?: number;
+  },
 ) {
   const limit = Math.min(filter.limit ?? 50, 200);
   const conditions = [
@@ -328,6 +334,8 @@ export async function listSales(
     isNull(schema.sales.deletedAt),
   ];
   if (filter.onlyUnlinked) conditions.push(isNull(schema.sales.linkedCallId));
+  if (filter.closedFrom) conditions.push(gte(schema.sales.closedAt, filter.closedFrom));
+  if (filter.closedTo) conditions.push(lte(schema.sales.closedAt, filter.closedTo));
   return db
     .select({
       id: schema.sales.id,
@@ -410,6 +418,24 @@ export async function linkToCall(
   },
 ) {
   return db.transaction(async (tx) => {
+    const [pair] = await tx
+      .select({ saleId: schema.sales.id, callId: schema.calls.id })
+      .from(schema.sales)
+      .innerJoin(schema.calls, eq(schema.calls.id, args.callId))
+      .where(
+        and(
+          eq(schema.sales.id, args.saleId),
+          eq(schema.sales.workspaceId, args.workspaceId),
+          eq(schema.sales.subAccountId, args.subAccountId),
+          isNull(schema.sales.deletedAt),
+          eq(schema.calls.workspaceId, args.workspaceId),
+          eq(schema.calls.subAccountId, args.subAccountId),
+          isNull(schema.calls.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!pair) throw new Error("Sale or call not found");
+
     const [updatedSale] = await tx
       .update(schema.sales)
       .set({ linkedCallId: args.callId, updatedAt: new Date() })
@@ -417,6 +443,7 @@ export async function linkToCall(
         and(
           eq(schema.sales.id, args.saleId),
           eq(schema.sales.workspaceId, args.workspaceId),
+          eq(schema.sales.subAccountId, args.subAccountId),
           isNull(schema.sales.deletedAt),
         ),
       )
@@ -430,6 +457,7 @@ export async function linkToCall(
         and(
           eq(schema.calls.id, args.callId),
           eq(schema.calls.workspaceId, args.workspaceId),
+          eq(schema.calls.subAccountId, args.subAccountId),
           isNull(schema.calls.deletedAt),
         ),
       );
@@ -449,42 +477,26 @@ export async function linkToCall(
   });
 }
 
-export async function unlinkFromCall(
-  db: Db,
-  args: { saleId: string; workspaceId: string },
-) {
+export async function unlinkFromCall(db: Db, args: { saleId: string; workspaceId: string }) {
   return db.transaction(async (tx) => {
     const [sale] = await tx
       .select({ linkedCallId: schema.sales.linkedCallId })
       .from(schema.sales)
-      .where(
-        and(
-          eq(schema.sales.id, args.saleId),
-          eq(schema.sales.workspaceId, args.workspaceId),
-        ),
-      )
+      .where(and(eq(schema.sales.id, args.saleId), eq(schema.sales.workspaceId, args.workspaceId)))
       .limit(1);
     const previousCallId = sale?.linkedCallId ?? null;
 
     await tx
       .update(schema.sales)
       .set({ linkedCallId: null, updatedAt: new Date() })
-      .where(
-        and(
-          eq(schema.sales.id, args.saleId),
-          eq(schema.sales.workspaceId, args.workspaceId),
-        ),
-      );
+      .where(and(eq(schema.sales.id, args.saleId), eq(schema.sales.workspaceId, args.workspaceId)));
 
     if (previousCallId) {
       await tx
         .update(schema.calls)
         .set({ linkedSaleId: null, updatedAt: new Date() })
         .where(
-          and(
-            eq(schema.calls.id, previousCallId),
-            eq(schema.calls.workspaceId, args.workspaceId),
-          ),
+          and(eq(schema.calls.id, previousCallId), eq(schema.calls.workspaceId, args.workspaceId)),
         );
     }
 
@@ -492,10 +504,7 @@ export async function unlinkFromCall(
   });
 }
 
-export async function softDeleteSale(
-  db: Db,
-  args: { saleId: string; workspaceId: string },
-) {
+export async function softDeleteSale(db: Db, args: { saleId: string; workspaceId: string }) {
   const [row] = await db
     .update(schema.sales)
     .set({ deletedAt: new Date(), updatedAt: new Date() })
@@ -548,10 +557,7 @@ export type RecordRefundResult = {
   entriesAdjusted: number;
 };
 
-export async function recordRefund(
-  db: Db,
-  input: RecordRefundInput,
-): Promise<RecordRefundResult> {
+export async function recordRefund(db: Db, input: RecordRefundInput): Promise<RecordRefundResult> {
   return db.transaction(async (tx) => {
     const [sale] = await tx
       .select({

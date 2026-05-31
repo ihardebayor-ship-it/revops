@@ -56,11 +56,9 @@ DECLARE
     'workspace_settings', 'tenant_settings',
     'sales_roles', 'sales_role_assignments',
     'funnel_stages', 'funnel_event_dedupe',
-    'dispositions', 'customers',
+    'dispositions',
     'commission_rules', 'commission_periods',
     'commission_recompute_runs',
-    'goals',
-    'data_sources',
     'agent_threads', 'agent_facts',
     'outbound_webhook_subscriptions'
   ];
@@ -73,6 +71,7 @@ DECLARE
     'commission_entries', 'commission_recipients',
     'funnel_events', 'tasks',
     'applications', 'optins',
+    'customers', 'goals', 'data_sources',
     'data_source_connections'
   ];
 

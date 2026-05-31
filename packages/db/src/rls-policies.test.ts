@@ -10,6 +10,14 @@ const ghlWebhookRoute = readRepoFile("apps/web/src/app/api/webhooks/ghl/route.ts
 const aircallWebhookRoute = readRepoFile("apps/web/src/app/api/webhooks/aircall/route.ts");
 const fathomWebhookRoute = readRepoFile("apps/web/src/app/api/webhooks/fathom/route.ts");
 const fathomWebhookHandler = readRepoFile("packages/jobs/src/webhooks/fathom-handler.ts");
+const salesSchema = readRepoFile("packages/db/src/schema/sales.ts");
+const formsSchema = readRepoFile("packages/db/src/schema/forms.ts");
+const dataSourcesSchema = readRepoFile("packages/db/src/schema/data-sources.ts");
+const commissionsSchema = readRepoFile("packages/db/src/schema/commissions.ts");
+const dataSpineIndexesSql = readFileSync(
+  new URL("../drizzle/9002-data-spine-indexes.sql", import.meta.url),
+  "utf8",
+);
 
 const betterAuthTables = ["account", "session", "user", "verification"];
 const specialPolicyTables = [
@@ -40,12 +48,9 @@ const workspaceTables = [
   "funnel_stages",
   "funnel_event_dedupe",
   "dispositions",
-  "customers",
   "commission_rules",
   "commission_periods",
   "commission_recompute_runs",
-  "goals",
-  "data_sources",
   "agent_threads",
   "agent_facts",
   "outbound_webhook_subscriptions",
@@ -61,6 +66,9 @@ const subAccountTables = [
   "tasks",
   "applications",
   "optins",
+  "customers",
+  "goals",
+  "data_sources",
   "data_source_connections",
 ];
 
@@ -152,6 +160,24 @@ describe("webhook idempotency schema", () => {
     expect(fathomWebhookHandler).toContain("parseFathomProviderAccountId");
     expect(fathomWebhookHandler).toContain("eq(schema.customers.subAccountId, scope.subAccountId)");
     expect(fathomWebhookHandler).toContain("eq(schema.customers.workspaceId, scope.workspaceId!)");
+  });
+});
+
+describe("data spine indexes", () => {
+  it("scopes provider external ids by sub-account", () => {
+    expect(salesSchema).toContain("sales_sub_source_external_uq");
+    expect(formsSchema).toContain("optins_sub_source_external_uq");
+    expect(formsSchema).toContain("applications_sub_source_external_uq");
+    expect(dataSpineIndexesSql).toContain(
+      "UNIQUE (sub_account_id, source_integration, external_id)",
+    );
+  });
+
+  it("adds lookup indexes needed by Sprint 1 query paths", () => {
+    expect(dataSourcesSchema).toContain("data_source_connections_tool_external_idx");
+    expect(commissionsSchema).toContain("commission_entries_sub_recipient_status_available_idx");
+    expect(dataSpineIndexesSql).toContain("customers_sub_lower_email_idx");
+    expect(dataSpineIndexesSql).toContain("memberships_user_workspace_null_sub_uq");
   });
 });
 

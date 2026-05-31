@@ -49,7 +49,11 @@ export const sales = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => ({
-    externalUq: unique("sales_external_uq").on(t.sourceIntegration, t.externalId),
+    externalUq: unique("sales_sub_source_external_uq").on(
+      t.subAccountId,
+      t.sourceIntegration,
+      t.externalId,
+    ),
     subClosedIdx: index("sales_sub_closed_idx").on(t.subAccountId, t.closedAt),
     customerIdx: index("sales_customer_idx").on(t.customerId),
     callIdx: index("sales_call_idx").on(t.linkedCallId),

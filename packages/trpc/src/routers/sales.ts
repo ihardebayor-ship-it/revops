@@ -32,6 +32,8 @@ export const salesRouter = router({
     .input(
       z.object({
         onlyUnlinked: z.boolean().default(false),
+        closedFrom: z.string().datetime().nullable().optional(),
+        closedTo: z.string().datetime().nullable().optional(),
         limit: z.number().int().min(1).max(200).default(50),
       }),
     )
@@ -40,6 +42,8 @@ export const salesRouter = router({
       return salesDomain.listSales(ctx.db, {
         subAccountId: ctx.user.subAccountId,
         onlyUnlinked: input.onlyUnlinked,
+        closedFrom: input.closedFrom ? new Date(input.closedFrom) : null,
+        closedTo: input.closedTo ? new Date(input.closedTo) : null,
         limit: input.limit,
       });
     }),

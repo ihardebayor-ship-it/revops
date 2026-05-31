@@ -3,6 +3,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const routersDir = new URL(".", import.meta.url);
+const contextSource = readFileSync(new URL("../context.ts", import.meta.url), "utf8");
+const callsSource = readFileSync(new URL("./calls.ts", import.meta.url), "utf8");
+const salesSource = readFileSync(new URL("./sales.ts", import.meta.url), "utf8");
 
 describe("router mutation authorization", () => {
   it("does not define mutations from plain authedProcedure", () => {
@@ -14,6 +17,24 @@ describe("router mutation authorization", () => {
       });
 
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("data spine guards", () => {
+  it("populates sales role slugs for role-targeted task visibility", () => {
+    expect(contextSource).toContain("salesRoleAssignments");
+    expect(contextSource).toContain("salesRoles.slug");
+    expect(contextSource).toContain(
+      "salesRoleSlugs: [...new Set(roleRows.map((row) => row.slug))]",
+    );
+    expect(contextSource).not.toContain("for now `salesRoleSlugs` is empty");
+  });
+
+  it("keeps core list APIs date-range filterable", () => {
+    expect(callsSource).toContain("appointmentFrom");
+    expect(callsSource).toContain("appointmentTo");
+    expect(salesSource).toContain("closedFrom");
+    expect(salesSource).toContain("closedTo");
   });
 });
 

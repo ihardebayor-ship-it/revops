@@ -1,8 +1,14 @@
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, gt, isNull, or } from "drizzle-orm";
 import { getAuth } from "@revops/auth/server";
 import { type AuthContext } from "@revops/auth/policy";
 import { getDb, bypassRls, type Db } from "@revops/db/client";
-import { memberships, platformUsers, subAccounts } from "@revops/db/schema";
+import {
+  memberships,
+  platformUsers,
+  salesRoleAssignments,
+  salesRoles,
+  subAccounts,
+} from "@revops/db/schema";
 
 export type CreateContextOptions = {
   headers: Headers;
@@ -23,9 +29,8 @@ export type Context = {
  * for the user-being-authenticated until session settings are placed, so
  * we use bypassRls for this initial resolution only).
  *
- * Sales-role resolution lands in Phase 1; for now `salesRoleSlugs` is empty.
- * The actual tx-scoped db swap happens in the authed-procedure middleware
- * via `withTenant`.
+ * The actual tx-scoped db swap happens in the authed-procedure middleware via
+ * `withTenant`.
  */
 export async function createContext({
   headers,
@@ -112,12 +117,32 @@ export async function createContext({
       }
     }
 
+    const roleConditions = [
+      eq(salesRoleAssignments.userId, userId),
+      eq(salesRoleAssignments.workspaceId, workspaceId),
+      isNull(salesRoleAssignments.deletedAt),
+      isNull(salesRoles.deletedAt),
+      or(
+        isNull(salesRoleAssignments.effectiveTo),
+        gt(salesRoleAssignments.effectiveTo, new Date()),
+      )!,
+    ];
+    if (resolvedSubAccountId) {
+      roleConditions.push(eq(salesRoleAssignments.subAccountId, resolvedSubAccountId));
+    }
+
+    const roleRows = await privileged
+      .select({ slug: salesRoles.slug })
+      .from(salesRoleAssignments)
+      .innerJoin(salesRoles, eq(salesRoles.id, salesRoleAssignments.salesRoleId))
+      .where(and(...roleConditions));
+
     return {
       userId,
       workspaceId,
       subAccountId: resolvedSubAccountId,
       accessRole: membership?.accessRole ?? null,
-      salesRoleSlugs: [],
+      salesRoleSlugs: [...new Set(roleRows.map((row) => row.slug))],
       isSuperadmin,
     } satisfies AuthContext;
   });
