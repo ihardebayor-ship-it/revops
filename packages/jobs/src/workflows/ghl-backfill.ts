@@ -6,7 +6,7 @@
 // place that turns GHL-shaped data into call rows.
 
 import { NonRetriableError } from "inngest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { bypassRls, schema } from "@revops/db/client";
 import { decryptToken } from "@revops/integrations/shared";
 import { GHL_PROVIDER_ID, createGhlClient } from "@revops/integrations/ghl";
@@ -105,16 +105,18 @@ export const ghlBackfill = inngest.createFunction(
 
       for (const apt of events) {
         if (!apt.id || !apt.startTime) continue;
-        const externalId = `Backfill:${apt.id}`;
+        const providerAccountId = conn.externalAccountId;
+        const externalId = `AppointmentCreate:${apt.id}`;
         const inboundId = await bypassRls(async (db) => {
           const inserted = await db
             .insert(schema.webhookInboundEvents)
             .values({
               source: GHL_PROVIDER_ID,
+              providerAccountId,
               externalId,
               payload: {
                 type: "AppointmentCreate",
-                locationId: conn.externalAccountId,
+                locationId: providerAccountId,
                 appointment: apt,
               } as Record<string, unknown>,
               signatureVerified: false,
@@ -122,6 +124,7 @@ export const ghlBackfill = inngest.createFunction(
             .onConflictDoNothing({
               target: [
                 schema.webhookInboundEvents.source,
+                schema.webhookInboundEvents.providerAccountId,
                 schema.webhookInboundEvents.externalId,
               ],
             })
@@ -130,7 +133,13 @@ export const ghlBackfill = inngest.createFunction(
           const [existing] = await db
             .select({ id: schema.webhookInboundEvents.id })
             .from(schema.webhookInboundEvents)
-            .where(eq(schema.webhookInboundEvents.externalId, externalId))
+            .where(
+              and(
+                eq(schema.webhookInboundEvents.source, GHL_PROVIDER_ID),
+                eq(schema.webhookInboundEvents.providerAccountId, providerAccountId),
+                eq(schema.webhookInboundEvents.externalId, externalId),
+              ),
+            )
             .limit(1);
           return existing?.id ?? null;
         });

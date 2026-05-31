@@ -13,3 +13,4 @@ export * as tasks from "./tasks/index";
 export * as roles from "./roles/index";
 export * as dispositions from "./dispositions/index";
 export * as optins from "./optins/index";
+export * as webhooks from "./webhooks/index";
