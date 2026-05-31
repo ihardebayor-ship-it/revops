@@ -79,6 +79,14 @@ export default async function IntegrationsPage({
       <PageHeader
         title="Integrations"
         description="Connect your data sources. Webhooks pour into the timeline; OAuth + API keys are encrypted at rest."
+        actions={
+          <a
+            href={`/${slug}/integrations/webhooks`}
+            className="rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900"
+          >
+            Webhook events
+          </a>
+        }
       />
 
       <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
