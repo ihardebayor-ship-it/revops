@@ -49,9 +49,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 -- ─── 2. Enable RLS + add policies ────────────────────────────────
 DO $rls$
 DECLARE
-  -- direct: tables that carry workspace_id directly.
-  direct_tables text[] := ARRAY[
-    -- workspace_only (no sub_account_id)
+  -- workspace_only: tables that carry workspace_id directly but are not
+  -- scoped to a specific sub-account.
+  workspace_tables text[] := ARRAY[
     'sub_accounts', 'memberships', 'workspace_invitations',
     'workspace_settings', 'tenant_settings',
     'sales_roles', 'sales_role_assignments',
@@ -62,8 +62,13 @@ DECLARE
     'goals',
     'data_sources',
     'agent_threads', 'agent_facts',
-    'outbound_webhook_subscriptions',
-    -- workspace_and_sub
+    'outbound_webhook_subscriptions'
+  ];
+
+  -- workspace_and_sub: tables that also carry sub_account_id. Workspace admins
+  -- can see the whole workspace; sub-account users are pinned to their current
+  -- sub-account as a database backstop against forged headers.
+  sub_account_tables text[] := ARRAY[
     'calls', 'sales', 'payment_plans',
     'commission_entries', 'commission_recipients',
     'funnel_events', 'tasks',
@@ -77,7 +82,6 @@ DECLARE
     ARRAY['sales_role_versions',     'sales_roles',       'sales_role_id'],
     ARRAY['funnel_stage_versions',   'funnel_stages',     'funnel_stage_id'],
     ARRAY['commission_rule_versions','commission_rules',  'commission_rule_id'],
-    ARRAY['payment_plan_installments','sales',            'sale_id'],
     ARRAY['agent_messages',          'agent_threads',     'thread_id']
   ];
 
@@ -87,8 +91,8 @@ DECLARE
   parent_table text;
   fk_col text;
 BEGIN
-  -- 2a. Direct policies
-  FOREACH t IN ARRAY direct_tables LOOP
+  -- 2a. Workspace-scoped direct policies
+  FOREACH t IN ARRAY workspace_tables LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
     EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', t);
@@ -96,6 +100,42 @@ BEGIN
       CREATE POLICY tenant_isolation ON %I
         USING (workspace_id = app_current_workspace_id() OR app_is_superadmin())
         WITH CHECK (workspace_id = app_current_workspace_id() OR app_is_superadmin())
+    $p$, t);
+  END LOOP;
+
+  -- 2a-bis. Sub-account-scoped direct policies
+  FOREACH t IN ARRAY sub_account_tables LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
+    EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', t);
+    EXECUTE format($p$
+      CREATE POLICY tenant_isolation ON %I
+        USING (
+          app_is_superadmin()
+          OR (
+            workspace_id = app_current_workspace_id()
+            AND (
+              app_current_access_role() = 'workspace_admin'
+              OR (
+                app_current_sub_account_id() IS NOT NULL
+                AND sub_account_id = app_current_sub_account_id()
+              )
+            )
+          )
+        )
+        WITH CHECK (
+          app_is_superadmin()
+          OR (
+            workspace_id = app_current_workspace_id()
+            AND (
+              app_current_access_role() = 'workspace_admin'
+              OR (
+                app_current_sub_account_id() IS NOT NULL
+                AND sub_account_id = app_current_sub_account_id()
+              )
+            )
+          )
+        )
     $p$, t);
   END LOOP;
 
@@ -128,7 +168,45 @@ BEGIN
     $p$, child_table, parent_table, child_table, fk_col, parent_table, child_table, fk_col);
   END LOOP;
 
-  -- 2b-bis. installment_status_history → via payment_plan_installments → sales.
+  -- 2b-bis. payment_plan_installments → via sales, preserving sub-account scope.
+  ALTER TABLE payment_plan_installments ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE payment_plan_installments FORCE ROW LEVEL SECURITY;
+  DROP POLICY IF EXISTS tenant_isolation ON payment_plan_installments;
+  CREATE POLICY tenant_isolation ON payment_plan_installments
+    USING (
+      app_is_superadmin()
+      OR EXISTS (
+        SELECT 1
+        FROM sales s
+        WHERE s.id = payment_plan_installments.sale_id
+          AND s.workspace_id = app_current_workspace_id()
+          AND (
+            app_current_access_role() = 'workspace_admin'
+            OR (
+              app_current_sub_account_id() IS NOT NULL
+              AND s.sub_account_id = app_current_sub_account_id()
+            )
+          )
+      )
+    )
+    WITH CHECK (
+      app_is_superadmin()
+      OR EXISTS (
+        SELECT 1
+        FROM sales s
+        WHERE s.id = payment_plan_installments.sale_id
+          AND s.workspace_id = app_current_workspace_id()
+          AND (
+            app_current_access_role() = 'workspace_admin'
+            OR (
+              app_current_sub_account_id() IS NOT NULL
+              AND s.sub_account_id = app_current_sub_account_id()
+            )
+          )
+      )
+    );
+
+  -- 2b-ter. installment_status_history → via payment_plan_installments → sales.
   ALTER TABLE installment_status_history ENABLE ROW LEVEL SECURITY;
   ALTER TABLE installment_status_history FORCE ROW LEVEL SECURITY;
   DROP POLICY IF EXISTS tenant_isolation ON installment_status_history;
@@ -141,6 +219,13 @@ BEGIN
         JOIN sales s ON s.id = i.sale_id
         WHERE i.id = installment_status_history.installment_id
           AND s.workspace_id = app_current_workspace_id()
+          AND (
+            app_current_access_role() = 'workspace_admin'
+            OR (
+              app_current_sub_account_id() IS NOT NULL
+              AND s.sub_account_id = app_current_sub_account_id()
+            )
+          )
       )
     )
     WITH CHECK (
@@ -151,6 +236,13 @@ BEGIN
         JOIN sales s ON s.id = i.sale_id
         WHERE i.id = installment_status_history.installment_id
           AND s.workspace_id = app_current_workspace_id()
+          AND (
+            app_current_access_role() = 'workspace_admin'
+            OR (
+              app_current_sub_account_id() IS NOT NULL
+              AND s.sub_account_id = app_current_sub_account_id()
+            )
+          )
       )
     );
 

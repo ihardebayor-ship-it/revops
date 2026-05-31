@@ -11,7 +11,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "lint": "turbo run lint",
+    "lint": "packages/tooling/node_modules/.bin/eslint .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\" --ignore-path .gitignore",
@@ -21,7 +21,8 @@
     "db:migrate": "pnpm --filter @revops/db migrate",
     "db:push": "pnpm --filter @revops/db push",
     "db:studio": "pnpm --filter @revops/db studio",
-    "db:seed": "pnpm --filter @revops/db seed"
+    "db:seed": "pnpm --filter @revops/db seed",
+    "check:prod-env": "pnpm --filter @revops/config check:prod-env"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

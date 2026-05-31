@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { sales as salesDomain } from "@revops/domain";
 import { inngest } from "@revops/jobs";
-import { router, authedProcedure } from "../server";
+import { router, authedProcedure, authedProcedureWith } from "../server";
 
 const recipientSchema = z.object({
   userId: z.string(),
@@ -60,7 +60,7 @@ export const salesRouter = router({
       return { sale, recipients, installments };
     }),
 
-  create: authedProcedure
+  create: authedProcedureWith("sale:create")
     .input(
       z.object({
         customerEmail: z.string().email(),
@@ -109,7 +109,7 @@ export const salesRouter = router({
       return result;
     }),
 
-  linkToCall: authedProcedure
+  linkToCall: authedProcedureWith("sale:link")
     .input(z.object({ saleId: z.string().uuid(), callId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
@@ -129,7 +129,7 @@ export const salesRouter = router({
       return result;
     }),
 
-  unlinkFromCall: authedProcedure
+  unlinkFromCall: authedProcedureWith("sale:link")
     .input(z.object({ saleId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
@@ -139,7 +139,7 @@ export const salesRouter = router({
       });
     }),
 
-  softDelete: authedProcedure
+  softDelete: authedProcedureWith("sale:update")
     .input(z.object({ saleId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
@@ -154,7 +154,7 @@ export const salesRouter = router({
       return result;
     }),
 
-  recordRefund: authedProcedure
+  recordRefund: authedProcedureWith("sale:update")
     .input(
       z.object({
         saleId: z.string().uuid(),

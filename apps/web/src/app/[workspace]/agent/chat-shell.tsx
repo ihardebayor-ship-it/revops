@@ -114,6 +114,7 @@ export function AgentChatShell({ workspaceId }: { workspaceId: string }) {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                  workspaceId,
                   message: message.trim(),
                   threadId: last?.threadId,
                 }),
@@ -128,13 +129,11 @@ export function AgentChatShell({ workspaceId }: { workspaceId: string }) {
           {pending ? "Sending…" : "Send"}
         </button>
       </div>
-      {last && !last.ok && (
-        <p className="text-xs text-red-400">Error: {last.error}</p>
-      )}
+      {last && !last.ok && <p className="text-xs text-red-400">Error: {last.error}</p>}
       {last?.ok && !last.dispatched && (
         <p className="text-xs text-amber-400">
-          Queued. The user message is persisted but the agent worker won't pick it up
-          without an Inngest dev key.
+          Queued. The user message is persisted but the agent worker won't pick it up without an
+          Inngest dev key.
         </p>
       )}
 
@@ -155,12 +154,8 @@ export function AgentChatShell({ workspaceId }: { workspaceId: string }) {
                 ) : (
                   <>
                     <span className="text-emerald-400">done</span>
-                    <span className="flex-1 text-zinc-100">
-                      {e.text || `(${e.stopReason})`}
-                    </span>
-                    <span className="text-zinc-500">
-                      ${e.costUsd.toFixed(4)}
-                    </span>
+                    <span className="flex-1 text-zinc-100">{e.text || `(${e.stopReason})`}</span>
+                    <span className="text-zinc-500">${e.costUsd.toFixed(4)}</span>
                   </>
                 )}
               </li>

@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { dispositions as dispositionsDomain } from "@revops/domain";
-import { can } from "@revops/auth/policy";
-import { router, authedProcedure } from "../server";
+import { router, authedProcedure, authedProcedureWith } from "../server";
 
 export const dispositionsRouter = router({
   list: authedProcedure.query(async ({ ctx }) => {
@@ -10,7 +9,7 @@ export const dispositionsRouter = router({
     return dispositionsDomain.listDispositions(ctx.db, ctx.user.workspaceId);
   }),
 
-  update: authedProcedure
+  update: authedProcedureWith("salesrole:update")
     .input(
       z.object({
         dispositionId: z.string().uuid(),
@@ -21,12 +20,6 @@ export const dispositionsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (!can(ctx.user, "salesrole:update")) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Need workspace_admin to edit dispositions",
-        });
-      }
       return dispositionsDomain.updateDisposition(ctx.db, {
         dispositionId: input.dispositionId,
         workspaceId: ctx.user.workspaceId,

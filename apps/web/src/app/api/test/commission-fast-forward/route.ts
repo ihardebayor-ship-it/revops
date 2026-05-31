@@ -1,18 +1,15 @@
 // Test-only endpoint: rewinds pending_until / available_at on a sale's
 // commission entries by N days so the hold-release cron treats them as
-// past-deadline immediately. Refuses outside development.
+// past-deadline immediately. Requires explicit enablement plus platform-
+// superadmin access.
 
 import { and, eq, sql } from "drizzle-orm";
-import { headers } from "next/headers";
-import { getAuth } from "@revops/auth/server";
 import { bypassRls, schema } from "@revops/db/client";
+import { requireTestEndpointAccess } from "../_guard";
 
 export async function POST(req: Request) {
-  if (process.env.NODE_ENV === "production") {
-    return new Response("Disabled", { status: 404 });
-  }
-  const session = await getAuth().api.getSession({ headers: await headers() });
-  if (!session?.user) return new Response("Unauthorized", { status: 401 });
+  const access = await requireTestEndpointAccess();
+  if (access instanceof Response) return access;
 
   const body = (await req.json()) as { saleId?: string; days?: number };
   if (!body.saleId) return new Response("saleId required", { status: 400 });

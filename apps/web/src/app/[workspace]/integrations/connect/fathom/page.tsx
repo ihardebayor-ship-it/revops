@@ -1,4 +1,5 @@
 import { PageHeader } from "@revops/ui";
+import { signFathomWebhookScope } from "@revops/integrations/fathom";
 import { resolveWorkspaceBySlug } from "~/lib/workspace";
 
 export default async function FathomConnectPage({
@@ -7,9 +8,15 @@ export default async function FathomConnectPage({
   params: Promise<{ workspace: string }>;
 }) {
   const { workspace: slug } = await params;
-  await resolveWorkspaceBySlug(slug);
+  const ctx = await resolveWorkspaceBySlug(slug);
 
-  const webhookUrl = `/api/webhooks/fathom`;
+  const webhookKey = signFathomWebhookScope(
+    ctx.membership.subAccountId
+      ? { subAccountId: ctx.membership.subAccountId }
+      : { workspaceId: ctx.workspace.id },
+    getFathomWebhookKeySecret(),
+  );
+  const webhookUrl = `/api/webhooks/fathom?key=${encodeURIComponent(webhookKey)}`;
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -38,10 +45,9 @@ export default async function FathomConnectPage({
           </code>
         </Detail>
         <p className="mt-2 text-xs text-zinc-400">
-          Once configured, transcripts ingest automatically: chunked at ~5,000-char
-          paragraphs, embedded with text-embedding-3-small, written as agent_facts
-          rows scoped to the matched customer. Future agent turns retrieve the
-          most-relevant chunks via cosine similarity.
+          Once configured, transcripts ingest automatically: chunked at ~5,000-char paragraphs,
+          embedded with text-embedding-3-small, written as agent_facts rows scoped to the matched
+          customer. Future agent turns retrieve the most-relevant chunks via cosine similarity.
         </p>
       </div>
     </div>
@@ -55,4 +61,10 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
       <div className="text-sm text-zinc-100">{children}</div>
     </div>
   );
+}
+
+function getFathomWebhookKeySecret(): string {
+  const secret = process.env.BETTER_AUTH_SECRET ?? process.env.FATHOM_WEBHOOK_SECRET;
+  if (!secret) throw new Error("BETTER_AUTH_SECRET or FATHOM_WEBHOOK_SECRET is required");
+  return secret;
 }

@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { goals as goalsDomain } from "@revops/domain";
-import { can } from "@revops/auth/policy";
-import { router, authedProcedure } from "../server";
+import { router, authedProcedure, authedProcedureWith } from "../server";
 
 const GOAL_KIND = z.enum(["ote", "quota", "ramp", "target"]);
 const PERIOD_KIND = z.enum([
@@ -53,7 +52,7 @@ export const goalsRouter = router({
       });
     }),
 
-  create: authedProcedure
+  create: authedProcedureWith("salesrole:update")
     .input(
       z.object({
         kind: GOAL_KIND,
@@ -71,13 +70,6 @@ export const goalsRouter = router({
       if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
         throw new TRPCError({ code: "BAD_REQUEST" });
       }
-      // Goals are workspace-admin / manager territory.
-      if (!can(ctx.user, "salesrole:update")) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Need workspace_admin or manager to set goals",
-        });
-      }
       return goalsDomain.createGoal(ctx.db, {
         workspaceId: ctx.user.workspaceId,
         subAccountId: ctx.user.subAccountId,
@@ -94,13 +86,16 @@ export const goalsRouter = router({
       });
     }),
 
-  update: authedProcedure
+  update: authedProcedureWith("salesrole:update")
     .input(
       z.object({
         goalId: z.string().uuid(),
         kind: GOAL_KIND.optional(),
         metric: z.string().min(1).max(50).optional(),
-        targetValue: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
+        targetValue: z
+          .string()
+          .regex(/^\d+(\.\d{1,2})?$/)
+          .optional(),
         currency: z.string().length(3).nullable().optional(),
         periodKind: PERIOD_KIND.optional(),
         periodStart: ymd.optional(),
@@ -109,9 +104,6 @@ export const goalsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (!can(ctx.user, "salesrole:update")) {
-        throw new TRPCError({ code: "FORBIDDEN" });
-      }
       return goalsDomain.updateGoal(ctx.db, {
         goalId: input.goalId,
         workspaceId: ctx.user.workspaceId,
@@ -127,13 +119,10 @@ export const goalsRouter = router({
       });
     }),
 
-  softDelete: authedProcedure
+  softDelete: authedProcedureWith("salesrole:update")
     .input(z.object({ goalId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (!can(ctx.user, "salesrole:update")) {
-        throw new TRPCError({ code: "FORBIDDEN" });
-      }
       return goalsDomain.softDeleteGoal(ctx.db, {
         goalId: input.goalId,
         workspaceId: ctx.user.workspaceId,

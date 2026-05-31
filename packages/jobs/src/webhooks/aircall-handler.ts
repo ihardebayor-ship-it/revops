@@ -12,13 +12,14 @@
 
 import { NonRetriableError } from "inngest";
 import { and, eq } from "drizzle-orm";
-import { bypassRls, schema, type Db } from "@revops/db/client";
+import { bypassRls, schema, withTenant, type Db } from "@revops/db/client";
 import {
   AIRCALL_PROVIDER_ID,
   aircallWebhookSchema,
   mapAircallCall,
 } from "@revops/integrations/aircall";
 import { funnel as funnelDomain } from "@revops/domain";
+import { logger } from "@revops/observability";
 import { inngest } from "../client";
 
 export type AircallProcessResult =
@@ -57,6 +58,11 @@ export async function processAircallInboundEvent(
       .update(schema.webhookInboundEvents)
       .set({ processedAt: new Date(), error: "no user.id on payload" })
       .where(eq(schema.webhookInboundEvents.id, row.id));
+    logger.info("webhook.process_skipped", {
+      source: AIRCALL_PROVIDER_ID,
+      inboundEventId: row.id,
+      reason: "no_user_id",
+    });
     return { skipped: true, reason: "no_user_id" };
   }
 
@@ -81,83 +87,111 @@ export async function processAircallInboundEvent(
         error: `No connection for aircall user_id=${aircallUserId}`,
       })
       .where(eq(schema.webhookInboundEvents.id, row.id));
+    logger.warn("webhook.process_skipped", {
+      source: AIRCALL_PROVIDER_ID,
+      inboundEventId: row.id,
+      reason: "no_connection_for_user",
+      providerAccountId: aircallUserId,
+    });
     return { skipped: true, reason: "no_connection_for_user" };
   }
 
   const mapped = mapAircallCall(payload.event, payload.data);
 
-  const [existing] = await db
-    .select({ id: schema.calls.id })
-    .from(schema.calls)
-    .where(
-      and(
-        eq(schema.calls.subAccountId, conn.subAccountId),
-        eq(schema.calls.sourceIntegration, AIRCALL_PROVIDER_ID),
-        eq(schema.calls.externalId, mapped.externalId),
-      ),
-    )
-    .limit(1);
-
-  let callId: string;
-  let createdNew = false;
-  if (existing) {
-    await db
-      .update(schema.calls)
-      .set({
-        appointmentAt: mapped.appointmentAt,
-        contactName: mapped.contactName,
-        contactEmail: mapped.contactEmail,
-        contactPhone: mapped.contactPhone,
-        durationSeconds: mapped.durationSeconds,
-        recordingUrl: mapped.recordingUrl,
-        metadata: mapped.metadata,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.calls.id, existing.id));
-    callId = existing.id;
-  } else {
-    const [inserted] = await db
-      .insert(schema.calls)
-      .values({
-        workspaceId: conn.workspaceId,
-        subAccountId: conn.subAccountId,
-        contactName: mapped.contactName,
-        contactEmail: mapped.contactEmail,
-        contactPhone: mapped.contactPhone,
-        appointmentAt: mapped.appointmentAt,
-        durationSeconds: mapped.durationSeconds,
-        recordingUrl: mapped.recordingUrl,
-        sourceIntegration: AIRCALL_PROVIDER_ID,
-        externalId: mapped.externalId,
-        metadata: mapped.metadata,
-      })
-      .returning({ id: schema.calls.id });
-    if (!inserted) throw new Error("Failed to insert call");
-    callId = inserted.id;
-    createdNew = true;
-  }
-
-  // Emit a funnel event only on call.ended so we don't double-count
-  // create→end transitions.
-  if (payload.event === "call.ended") {
-    await funnelDomain.emitFunnelEvent(db, {
+  const result = await withTenant(
+    {
+      userId: "webhook:aircall",
       workspaceId: conn.workspaceId,
       subAccountId: conn.subAccountId,
-      entityType: "call",
-      entityId: callId,
-      stageSlug: "completed",
-      occurredAt: mapped.appointmentAt,
-      sourceEventId: row.id,
-      meta: { via: "aircall.webhook", direction: mapped.direction ?? null },
-    });
-  }
+      accessRole: "sub_account_admin",
+      isSuperadmin: false,
+    },
+    async (tenantDb) => {
+      const [existing] = await tenantDb
+        .select({ id: schema.calls.id })
+        .from(schema.calls)
+        .where(
+          and(
+            eq(schema.calls.subAccountId, conn.subAccountId),
+            eq(schema.calls.sourceIntegration, AIRCALL_PROVIDER_ID),
+            eq(schema.calls.externalId, mapped.externalId),
+          ),
+        )
+        .limit(1);
+
+      let callId: string;
+      let createdNew = false;
+      if (existing) {
+        await tenantDb
+          .update(schema.calls)
+          .set({
+            appointmentAt: mapped.appointmentAt,
+            contactName: mapped.contactName,
+            contactEmail: mapped.contactEmail,
+            contactPhone: mapped.contactPhone,
+            durationSeconds: mapped.durationSeconds,
+            recordingUrl: mapped.recordingUrl,
+            metadata: mapped.metadata,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.calls.id, existing.id));
+        callId = existing.id;
+      } else {
+        const [inserted] = await tenantDb
+          .insert(schema.calls)
+          .values({
+            workspaceId: conn.workspaceId,
+            subAccountId: conn.subAccountId,
+            contactName: mapped.contactName,
+            contactEmail: mapped.contactEmail,
+            contactPhone: mapped.contactPhone,
+            appointmentAt: mapped.appointmentAt,
+            durationSeconds: mapped.durationSeconds,
+            recordingUrl: mapped.recordingUrl,
+            sourceIntegration: AIRCALL_PROVIDER_ID,
+            externalId: mapped.externalId,
+            metadata: mapped.metadata,
+          })
+          .returning({ id: schema.calls.id });
+        if (!inserted) throw new Error("Failed to insert call");
+        callId = inserted.id;
+        createdNew = true;
+      }
+
+      // Emit a funnel event only on call.ended so we don't double-count
+      // create→end transitions.
+      if (payload.event === "call.ended") {
+        await funnelDomain.emitFunnelEvent(tenantDb, {
+          workspaceId: conn.workspaceId,
+          subAccountId: conn.subAccountId,
+          entityType: "call",
+          entityId: callId,
+          stageSlug: "completed",
+          occurredAt: mapped.appointmentAt,
+          sourceEventId: row.id,
+          meta: { via: "aircall.webhook", direction: mapped.direction ?? null },
+        });
+      }
+
+      return { callId, createdNew };
+    },
+  );
 
   await db
     .update(schema.webhookInboundEvents)
     .set({ processedAt: new Date() })
     .where(eq(schema.webhookInboundEvents.id, row.id));
 
-  return { skipped: false, callId, createdNew };
+  logger.info("webhook.processed", {
+    source: AIRCALL_PROVIDER_ID,
+    inboundEventId: row.id,
+    workspaceId: conn.workspaceId,
+    subAccountId: conn.subAccountId,
+    callId: result.callId,
+    createdNew: result.createdNew,
+  });
+
+  return { skipped: false, ...result };
 }
 
 export const aircallWebhookHandler = inngest.createFunction(

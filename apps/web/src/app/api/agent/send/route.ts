@@ -6,7 +6,7 @@
 
 import { headers } from "next/headers";
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getAuth } from "@revops/auth/server";
 import { bypassRls, schema } from "@revops/db/client";
 import { inngest } from "@revops/jobs";
@@ -15,31 +15,56 @@ export async function POST(req: Request) {
   const session = await getAuth().api.getSession({ headers: await headers() });
   if (!session?.user) return new Response("Unauthorized", { status: 401 });
 
-  const body = (await req.json()) as { message?: string; threadId?: string };
+  const body = (await req.json()) as {
+    message?: string;
+    workspaceId?: string;
+    threadId?: string;
+  };
   if (!body.message || body.message.trim().length === 0) {
     return Response.json({ ok: false, error: "message required" }, { status: 400 });
   }
+  if (!body.workspaceId) {
+    return Response.json({ ok: false, error: "workspaceId required" }, { status: 400 });
+  }
 
-  const { workspaceId, threadId } = await bypassRls(async (db) => {
+  const threadContext = await bypassRls(async (db) => {
     const [member] = await db
-      .select({ workspaceId: schema.memberships.workspaceId })
+      .select({
+        workspaceId: schema.memberships.workspaceId,
+        subAccountId: schema.memberships.subAccountId,
+      })
       .from(schema.memberships)
       .where(
         and(
           eq(schema.memberships.userId, session.user.id),
+          eq(schema.memberships.workspaceId, body.workspaceId!),
           isNull(schema.memberships.deletedAt),
         ),
       )
-      .orderBy(desc(schema.memberships.createdAt))
       .limit(1);
-    if (!member) throw new Error("No active workspace membership");
+    if (!member) return null;
 
-    if (body.threadId) return { workspaceId: member.workspaceId, threadId: body.threadId };
+    if (body.threadId) {
+      const [thread] = await db
+        .select({ id: schema.agentThreads.id })
+        .from(schema.agentThreads)
+        .where(
+          and(
+            eq(schema.agentThreads.id, body.threadId),
+            eq(schema.agentThreads.workspaceId, member.workspaceId),
+            eq(schema.agentThreads.userId, session.user.id),
+            isNull(schema.agentThreads.archivedAt),
+          ),
+        )
+        .limit(1);
+      return thread ? { workspaceId: member.workspaceId, threadId: thread.id } : null;
+    }
 
     const [thread] = await db
       .insert(schema.agentThreads)
       .values({
         workspaceId: member.workspaceId,
+        subAccountId: member.subAccountId,
         userId: session.user.id,
         title: body.message!.slice(0, 60),
       })
@@ -47,6 +72,12 @@ export async function POST(req: Request) {
     if (!thread) throw new Error("Failed to create thread");
     return { workspaceId: member.workspaceId, threadId: thread.id };
   });
+
+  if (!threadContext) {
+    return Response.json({ ok: false, error: "thread not found" }, { status: 404 });
+  }
+
+  const { workspaceId, threadId } = threadContext;
 
   const turnId = randomUUID();
 
@@ -65,7 +96,10 @@ export async function POST(req: Request) {
     dispatched = true;
   } catch (err) {
     if (process.env.NODE_ENV === "production") throw err;
-    console.warn("[agent.send] inngest.send failed (dev):", err instanceof Error ? err.message : err);
+    console.warn(
+      "[agent.send] inngest.send failed (dev):",
+      err instanceof Error ? err.message : err,
+    );
   }
 
   return Response.json({ ok: true, threadId, turnId, dispatched });

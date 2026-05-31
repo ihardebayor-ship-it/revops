@@ -1,4 +1,5 @@
 {
   "extends": "@revops/tooling/tsconfig.lib.json",
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }

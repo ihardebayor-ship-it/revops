@@ -8,7 +8,7 @@
 // This is the canonical funnel surface — closer / setter / manager
 // dashboards all derive from it.
 
-import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { type Db, schema } from "@revops/db/client";
 import type { Period } from "./types";
 
@@ -67,8 +67,7 @@ export async function funnelStats(db: Db, args: FunnelArgs): Promise<FunnelStage
     eq(schema.funnelEvents.workspaceId, args.workspaceId),
     eq(schema.funnelEvents.entityType, args.entityType),
   ];
-  if (args.subAccountId)
-    conditions.push(eq(schema.funnelEvents.subAccountId, args.subAccountId));
+  if (args.subAccountId) conditions.push(eq(schema.funnelEvents.subAccountId, args.subAccountId));
 
   const events = await db
     .select({
@@ -78,10 +77,7 @@ export async function funnelStats(db: Db, args: FunnelArgs): Promise<FunnelStage
       occurredAt: schema.funnelEvents.occurredAt,
     })
     .from(schema.funnelEvents)
-    .innerJoin(
-      schema.funnelStages,
-      eq(schema.funnelStages.id, schema.funnelEvents.stageId),
-    )
+    .innerJoin(schema.funnelStages, eq(schema.funnelStages.id, schema.funnelEvents.stageId))
     .where(and(...conditions))
     .orderBy(asc(schema.funnelEvents.occurredAt));
 

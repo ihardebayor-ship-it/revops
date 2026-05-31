@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { tasks as tasksDomain } from "@revops/domain";
 import { channelNames, emit, events } from "@revops/realtime";
-import { router, authedProcedure } from "../server";
+import { router, authedProcedure, authedProcedureWith } from "../server";
 
 export const tasksRouter = router({
   list: authedProcedure
@@ -35,7 +35,7 @@ export const tasksRouter = router({
       });
     }),
 
-  create: authedProcedure
+  create: authedProcedureWith("task:create")
     .input(
       z.object({
         kind: z.enum([
@@ -85,16 +85,16 @@ export const tasksRouter = router({
       if (assignedUserId) {
         // Fire-and-forget; emit() swallows errors so realtime hiccups never
         // break the originating mutation.
-        void emit(
-          channelNames.inboxFor(ctx.user.workspaceId, assignedUserId),
-          events.taskCreated,
-          { taskId: result.id, kind: input.kind, title: input.title },
-        );
+        void emit(channelNames.inboxFor(ctx.user.workspaceId, assignedUserId), events.taskCreated, {
+          taskId: result.id,
+          kind: input.kind,
+          title: input.title,
+        });
       }
       return result;
     }),
 
-  complete: authedProcedure
+  complete: authedProcedureWith("task:complete")
     .input(z.object({ taskId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.subAccountId || !ctx.user.workspaceId) {
@@ -115,7 +115,7 @@ export const tasksRouter = router({
       return result;
     }),
 
-  snooze: authedProcedure
+  snooze: authedProcedureWith("task:snooze")
     .input(
       z.object({
         taskId: z.string().uuid(),

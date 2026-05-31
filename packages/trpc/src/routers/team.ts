@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { team as teamDomain } from "@revops/domain";
-import { can } from "@revops/auth/policy";
-import { router, authedProcedure } from "../server";
+import { router, authedProcedure, authedProcedureWith } from "../server";
 
 const ACCESS_ROLES = z.enum([
   "workspace_admin",
@@ -18,7 +17,7 @@ export const teamRouter = router({
     return teamDomain.listTeam(ctx.db, { workspaceId: ctx.user.workspaceId });
   }),
 
-  invite: authedProcedure
+  invite: authedProcedureWith("member:invite")
     .input(
       z.object({
         email: z.string().email(),
@@ -28,12 +27,6 @@ export const teamRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (!can(ctx.user, "member:invite")) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Need workspace_admin to invite members",
-        });
-      }
       return teamDomain.inviteMember(ctx.db, {
         workspaceId: ctx.user.workspaceId,
         subAccountId: ctx.user.subAccountId,
@@ -44,26 +37,20 @@ export const teamRouter = router({
       });
     }),
 
-  revokeInvite: authedProcedure
+  revokeInvite: authedProcedureWith("member:invite")
     .input(z.object({ invitationId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (!can(ctx.user, "member:invite")) {
-        throw new TRPCError({ code: "FORBIDDEN" });
-      }
       return teamDomain.revokeInvitation(ctx.db, {
         invitationId: input.invitationId,
         workspaceId: ctx.user.workspaceId,
       });
     }),
 
-  removeMember: authedProcedure
+  removeMember: authedProcedureWith("member:remove")
     .input(z.object({ membershipId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (!can(ctx.user, "member:remove")) {
-        throw new TRPCError({ code: "FORBIDDEN" });
-      }
       return teamDomain.removeMember(ctx.db, {
         membershipId: input.membershipId,
         workspaceId: ctx.user.workspaceId,
@@ -71,7 +58,7 @@ export const teamRouter = router({
       });
     }),
 
-  updateMember: authedProcedure
+  updateMember: authedProcedureWith("member:update_role")
     .input(
       z.object({
         membershipId: z.string().uuid(),
@@ -81,9 +68,6 @@ export const teamRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (!can(ctx.user, "member:update_role")) {
-        throw new TRPCError({ code: "FORBIDDEN" });
-      }
       return teamDomain.updateMember(ctx.db, {
         membershipId: input.membershipId,
         workspaceId: ctx.user.workspaceId,

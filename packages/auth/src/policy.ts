@@ -35,6 +35,7 @@ export type Action =
   | "call:create"
   | "call:update"
   | "call:delete"
+  | "optin:create"
   | "sale:read"
   | "sale:create"
   | "sale:update"
@@ -78,10 +79,7 @@ const ADMIN_ACTIONS: ReadonlySet<Action> = new Set([
   "integration:disconnect",
 ]);
 
-const MANAGER_ACTIONS: ReadonlySet<Action> = new Set([
-  "commission:approve",
-  "commission:adjust",
-]);
+const MANAGER_ACTIONS: ReadonlySet<Action> = new Set(["commission:approve", "commission:adjust"]);
 
 export type AuthorizableResource = {
   type: string;
@@ -90,11 +88,7 @@ export type AuthorizableResource = {
   subAccountId?: string | null;
 };
 
-export function can(
-  ctx: AuthContext,
-  action: Action,
-  resource?: AuthorizableResource,
-): boolean {
+export function can(ctx: AuthContext, action: Action, resource?: AuthorizableResource): boolean {
   if (ctx.isSuperadmin) return true;
   if (!ctx.accessRole) return false;
 
@@ -128,6 +122,7 @@ export function can(
       return ctx.accessRole === "workspace_admin" || ctx.accessRole === "sub_account_admin";
     case "call:create":
     case "call:update":
+    case "optin:create":
     case "sale:create":
     case "sale:update":
     case "sale:link":

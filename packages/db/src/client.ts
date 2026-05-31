@@ -56,6 +56,7 @@ export type TenantScope = {
   userId: string;
   workspaceId: string | null;
   subAccountId: string | null;
+  accessRole?: string | null;
   isSuperadmin: boolean;
 };
 
@@ -71,10 +72,7 @@ export type TenantScope = {
  * Use this for every authenticated request path: tRPC procedures, Server
  * Actions, and Inngest tool steps.
  */
-export async function withTenant<T>(
-  scope: TenantScope,
-  fn: (db: Db) => Promise<T>,
-): Promise<T> {
+export async function withTenant<T>(scope: TenantScope, fn: (db: Db) => Promise<T>): Promise<T> {
   const db = getDb();
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.current_user_id', ${scope.userId}, true)`);
@@ -83,6 +81,9 @@ export async function withTenant<T>(
     );
     await tx.execute(
       sql`SELECT set_config('app.current_sub_account_id', ${scope.subAccountId ?? ""}, true)`,
+    );
+    await tx.execute(
+      sql`SELECT set_config('app.current_access_role', ${scope.accessRole ?? ""}, true)`,
     );
     await tx.execute(
       sql`SELECT set_config('app.is_superadmin', ${scope.isSuperadmin ? "1" : "0"}, true)`,

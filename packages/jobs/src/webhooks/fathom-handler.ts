@@ -1,11 +1,8 @@
 // fathom.webhook.received → chunk transcript → embed → write agent_facts.
 //
-// Resolution: match the recording back to a call using the calendar
-// invitees' email addresses. We pick the first invitee whose email
-// matches an existing customer in any of our workspaces' sub_accounts.
-// Phase 1 keeps this deterministic — no fuzzy matching here yet (the
-// existing reconciliation scorer can be wired later if false negatives
-// appear in production).
+// Resolution: match the recording back to a customer using the calendar
+// invitees' email addresses, constrained by the local workspace/sub-account
+// key embedded in the webhook URL. No global email lookup is allowed.
 //
 // agent_facts inserts:
 //   workspace_id    → resolved workspace
@@ -17,8 +14,8 @@
 //   sourceMessageId → null (transcript origin tracked via metadata.sourceFathomId)
 
 import { NonRetriableError } from "inngest";
-import { eq } from "drizzle-orm";
-import { bypassRls, schema, type Db } from "@revops/db/client";
+import { and, eq } from "drizzle-orm";
+import { bypassRls, schema, withTenant, type Db } from "@revops/db/client";
 import { embedTexts } from "@revops/integrations/shared";
 import {
   FATHOM_PROVIDER_ID,
@@ -26,6 +23,7 @@ import {
   fathomWebhookSchema,
   flattenTranscript,
 } from "@revops/integrations/fathom";
+import { logger } from "@revops/observability";
 import { inngest } from "../client";
 
 export type FathomProcessResult =
@@ -39,6 +37,7 @@ export async function processFathomInboundEvent(
   const [row] = await db
     .select({
       id: schema.webhookInboundEvents.id,
+      providerAccountId: schema.webhookInboundEvents.providerAccountId,
       payload: schema.webhookInboundEvents.payload,
       processedAt: schema.webhookInboundEvents.processedAt,
     })
@@ -54,11 +53,28 @@ export async function processFathomInboundEvent(
     throw new NonRetriableError(`Payload invalid: ${parsed.error.message}`);
   }
   const payload = parsed.data;
+  const scope = parseFathomProviderAccountId(row.providerAccountId);
+  if (!scope) {
+    await markProcessed(db, row.id, "invalid_provider_account_id");
+    logger.warn("webhook.process_skipped", {
+      source: FATHOM_PROVIDER_ID,
+      inboundEventId: row.id,
+      providerAccountId: row.providerAccountId,
+      reason: "invalid_provider_account_id",
+    });
+    return { skipped: true, reason: "invalid_provider_account_id" };
+  }
 
   // Pick the first invitee email that maps to an existing customer.
   const invitees = (payload.calendar_invitees ?? []).filter((i) => !!i.email);
   if (invitees.length === 0) {
     await markProcessed(db, row.id, "no_invitees_with_email");
+    logger.info("webhook.process_skipped", {
+      source: FATHOM_PROVIDER_ID,
+      inboundEventId: row.id,
+      providerAccountId: row.providerAccountId,
+      reason: "no_invitees_with_email",
+    });
     return { skipped: true, reason: "no_invitees_with_email" };
   }
 
@@ -71,7 +87,14 @@ export async function processFathomInboundEvent(
         subAccountId: schema.customers.subAccountId,
       })
       .from(schema.customers)
-      .where(eq(schema.customers.primaryEmail, inv.email!.toLowerCase().trim()))
+      .where(
+        and(
+          eq(schema.customers.primaryEmail, inv.email!.toLowerCase().trim()),
+          scope.subAccountId
+            ? eq(schema.customers.subAccountId, scope.subAccountId)
+            : eq(schema.customers.workspaceId, scope.workspaceId!),
+        ),
+      )
       .limit(1);
     if (c) {
       resolved = { workspaceId: c.workspaceId, subAccountId: c.subAccountId, customerId: c.id };
@@ -80,6 +103,12 @@ export async function processFathomInboundEvent(
   }
   if (!resolved) {
     await markProcessed(db, row.id, "no_matching_customer");
+    logger.info("webhook.process_skipped", {
+      source: FATHOM_PROVIDER_ID,
+      inboundEventId: row.id,
+      providerAccountId: row.providerAccountId,
+      reason: "no_matching_customer",
+    });
     return { skipped: true, reason: "no_matching_customer" };
   }
 
@@ -99,19 +128,40 @@ export async function processFathomInboundEvent(
     throw new Error("Embedding count != chunk count");
   }
 
-  for (let i = 0; i < chunks.length; i++) {
-    await db.insert(schema.agentFacts).values({
+  await withTenant(
+    {
+      userId: "webhook:fathom",
       workspaceId: resolved.workspaceId,
-      scope: "customer",
-      scopeRefId: resolved.customerId,
-      kind: "fact",
-      content: chunks[i]!,
-      embedding: vectors[i]!,
-      confidence: "0.70",
-    });
-  }
+      subAccountId: resolved.subAccountId,
+      accessRole: "sub_account_admin",
+      isSuperadmin: false,
+    },
+    async (tenantDb) => {
+      for (let i = 0; i < chunks.length; i++) {
+        await tenantDb.insert(schema.agentFacts).values({
+          workspaceId: resolved.workspaceId,
+          scope: "customer",
+          scopeRefId: resolved.customerId,
+          kind: "fact",
+          content: chunks[i]!,
+          embedding: vectors[i]!,
+          confidence: "0.70",
+        });
+      }
+    },
+  );
 
   await markProcessed(db, row.id, null);
+  logger.info("webhook.processed", {
+    source: FATHOM_PROVIDER_ID,
+    inboundEventId: row.id,
+    providerAccountId: row.providerAccountId,
+    workspaceId: resolved.workspaceId,
+    subAccountId: resolved.subAccountId,
+    customerId: resolved.customerId,
+    chunks: chunks.length,
+    tokens: totalTokens,
+  });
   return {
     skipped: false,
     customerId: resolved.customerId,
@@ -125,6 +175,23 @@ async function markProcessed(db: Db, id: string, error: string | null): Promise<
     .update(schema.webhookInboundEvents)
     .set({ processedAt: new Date(), error })
     .where(eq(schema.webhookInboundEvents.id, id));
+}
+
+function parseFathomProviderAccountId(
+  providerAccountId: string,
+):
+  | { workspaceId: string; subAccountId?: never }
+  | { workspaceId?: never; subAccountId: string }
+  | null {
+  if (providerAccountId.startsWith("workspace:")) {
+    const workspaceId = providerAccountId.slice("workspace:".length).trim();
+    return workspaceId ? { workspaceId } : null;
+  }
+  if (providerAccountId.startsWith("subAccount:")) {
+    const subAccountId = providerAccountId.slice("subAccount:".length).trim();
+    return subAccountId ? { subAccountId } : null;
+  }
+  return null;
 }
 
 export const fathomWebhookHandler = inngest.createFunction(

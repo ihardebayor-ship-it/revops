@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { roles as rolesDomain } from "@revops/domain";
-import { can } from "@revops/auth/policy";
-import { router, authedProcedure } from "../server";
+import { router, authedProcedure, authedProcedureWith } from "../server";
 
 export const rolesRouter = router({
   list: authedProcedure.query(async ({ ctx }) => {
@@ -10,7 +9,7 @@ export const rolesRouter = router({
     return rolesDomain.listRoles(ctx.db, ctx.user.workspaceId);
   }),
 
-  update: authedProcedure
+  update: authedProcedureWith("salesrole:update")
     .input(
       z.object({
         roleId: z.string().uuid(),
@@ -25,9 +24,6 @@ export const rolesRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (!can(ctx.user, "salesrole:update")) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Need workspace_admin to edit roles" });
-      }
       return rolesDomain.updateRole(ctx.db, {
         roleId: input.roleId,
         workspaceId: ctx.user.workspaceId,

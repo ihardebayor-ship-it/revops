@@ -94,7 +94,7 @@ export async function POST(req: Request) {
         const r = await db
           .select({ userId: schema.agentThreads.userId })
           .from(schema.agentThreads)
-          .where(eq(schema.agentThreads.id, threadId!))
+          .where(and(eq(schema.agentThreads.id, threadId!), isNull(schema.agentThreads.archivedAt)))
           .limit(1);
         return r.length > 0 && r[0]!.userId === session.user.id;
       });

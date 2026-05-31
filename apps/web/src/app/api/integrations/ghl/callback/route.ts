@@ -3,9 +3,10 @@
 // data_source_connection row, and redirect the user back to /integrations.
 
 import { redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { headers } from "next/headers";
 import { getAuth } from "@revops/auth/server";
+import { can } from "@revops/auth/policy";
 import { bypassRls, schema } from "@revops/db/client";
 import { encryptToken } from "@revops/integrations/shared";
 import {
@@ -25,12 +26,48 @@ export async function GET(req: Request) {
   const stateB64 = url.searchParams.get("state");
   if (!code || !stateB64) return new Response("code/state missing", { status: 400 });
 
+  const stateSecret = process.env.BETTER_AUTH_SECRET;
+  if (!stateSecret) return new Response("OAuth state signing not configured", { status: 501 });
+
   let state;
   try {
-    state = decodeInstallState(stateB64);
+    state = decodeInstallState(stateB64, stateSecret);
   } catch {
     return new Response("Invalid state", { status: 400 });
   }
+
+  const isMember = await bypassRls(async (db) => {
+    const [member] = await db
+      .select({
+        accessRole: schema.memberships.accessRole,
+        subAccountId: schema.memberships.subAccountId,
+      })
+      .from(schema.memberships)
+      .where(
+        and(
+          eq(schema.memberships.userId, session.user.id),
+          eq(schema.memberships.workspaceId, state.workspaceId),
+          eq(schema.memberships.subAccountId, state.subAccountId),
+          isNull(schema.memberships.deletedAt),
+        ),
+      )
+      .limit(1);
+    return Boolean(
+      member &&
+      can(
+        {
+          userId: session.user.id,
+          workspaceId: state.workspaceId,
+          subAccountId: member.subAccountId,
+          accessRole: member.accessRole,
+          salesRoleSlugs: [],
+          isSuperadmin: false,
+        },
+        "integration:connect",
+      ),
+    );
+  });
+  if (!isMember) return new Response("Forbidden", { status: 403 });
 
   const clientId = process.env.GOHIGHLEVEL_CLIENT_ID;
   const clientSecret = process.env.GOHIGHLEVEL_CLIENT_SECRET;
@@ -79,6 +116,8 @@ export async function GET(req: Request) {
         .from(schema.dataSourceConnections)
         .where(
           and(
+            eq(schema.dataSourceConnections.workspaceId, state.workspaceId),
+            eq(schema.dataSourceConnections.subAccountId, state.subAccountId),
             eq(schema.dataSourceConnections.toolType, GHL_PROVIDER_ID),
             eq(schema.dataSourceConnections.externalAccountId, tokens.locationId),
           ),
@@ -129,5 +168,10 @@ export async function GET(req: Request) {
     data: { connectionId, sinceDays: 90 },
   });
 
-  redirect(state.returnUrl ?? "/");
+  redirect(safeReturnUrl(state.returnUrl));
+}
+
+function safeReturnUrl(returnUrl: string | undefined): string {
+  if (!returnUrl || !returnUrl.startsWith("/") || returnUrl.startsWith("//")) return "/";
+  return returnUrl;
 }

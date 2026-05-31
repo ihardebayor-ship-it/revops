@@ -2,7 +2,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { getAuth } from "@revops/auth/server";
 import { type AuthContext } from "@revops/auth/policy";
 import { getDb, bypassRls, type Db } from "@revops/db/client";
-import { memberships, platformUsers } from "@revops/db/schema";
+import { memberships, platformUsers, subAccounts } from "@revops/db/schema";
 
 export type CreateContextOptions = {
   headers: Headers;
@@ -87,11 +87,36 @@ export async function createContext({
       } satisfies AuthContext;
     }
 
+    const membership = member[0];
+    let resolvedSubAccountId = membership?.subAccountId ?? null;
+
+    if (subAccountId) {
+      const canSelectAnyWorkspaceSubAccount =
+        isSuperadmin || membership?.accessRole === "workspace_admin";
+
+      if (canSelectAnyWorkspaceSubAccount) {
+        const [subAccount] = await privileged
+          .select({ id: subAccounts.id })
+          .from(subAccounts)
+          .where(
+            and(
+              eq(subAccounts.id, subAccountId),
+              eq(subAccounts.workspaceId, workspaceId),
+              isNull(subAccounts.deletedAt),
+            ),
+          )
+          .limit(1);
+        resolvedSubAccountId = subAccount?.id ?? null;
+      } else {
+        resolvedSubAccountId = membership?.subAccountId === subAccountId ? subAccountId : null;
+      }
+    }
+
     return {
       userId,
       workspaceId,
-      subAccountId: subAccountId ?? member[0]?.subAccountId ?? null,
-      accessRole: member[0]?.accessRole ?? null,
+      subAccountId: resolvedSubAccountId,
+      accessRole: membership?.accessRole ?? null,
       salesRoleSlugs: [],
       isSuperadmin,
     } satisfies AuthContext;

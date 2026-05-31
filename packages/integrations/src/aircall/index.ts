@@ -3,11 +3,7 @@
 
 export const AIRCALL_PROVIDER_ID = "aircall" as const;
 
-export {
-  AIRCALL_SUPPORTED_EVENTS,
-  AIRCALL_API_BASE,
-  type AircallEvent,
-} from "./events";
+export { AIRCALL_SUPPORTED_EVENTS, AIRCALL_API_BASE, type AircallEvent } from "./events";
 export {
   aircallWebhookSchema,
   aircallCallDataSchema,
@@ -15,5 +11,11 @@ export {
   type AircallCallData,
 } from "./types";
 export { verifyAircallToken } from "./signature";
-export { aircallPing, createAircallClient, type AircallCredentials, type AircallClient } from "./client";
+export {
+  aircallPing,
+  createAircallClient,
+  type AircallCredentials,
+  type AircallClient,
+} from "./client";
 export { mapAircallCall, type MappedAircallCall } from "./field-mapping";
+export { aircallEndedFixture, aircallEndedMissingUserFixture } from "./fixtures";

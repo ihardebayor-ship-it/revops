@@ -17,15 +17,55 @@ import { getAuth } from "@revops/auth/server";
 import { bypassRls, schema } from "@revops/db/client";
 
 const FIRST_NAMES = [
-  "Alex","Sam","Jordan","Taylor","Morgan","Casey","Riley","Quinn","Avery","Drew",
-  "Skyler","Reese","Charlie","Hayden","Rowan","Sage","Emerson","Phoenix","Indigo","Wren",
+  "Alex",
+  "Sam",
+  "Jordan",
+  "Taylor",
+  "Morgan",
+  "Casey",
+  "Riley",
+  "Quinn",
+  "Avery",
+  "Drew",
+  "Skyler",
+  "Reese",
+  "Charlie",
+  "Hayden",
+  "Rowan",
+  "Sage",
+  "Emerson",
+  "Phoenix",
+  "Indigo",
+  "Wren",
 ];
 const LAST_NAMES = [
-  "Patel","Nguyen","Garcia","Smith","Johnson","Williams","Brown","Jones","Davis","Martinez",
-  "Wilson","Anderson","Thomas","Hernandez","Lee","Walker","Hall","Allen","Young","King",
+  "Patel",
+  "Nguyen",
+  "Garcia",
+  "Smith",
+  "Johnson",
+  "Williams",
+  "Brown",
+  "Jones",
+  "Davis",
+  "Martinez",
+  "Wilson",
+  "Anderson",
+  "Thomas",
+  "Hernandez",
+  "Lee",
+  "Walker",
+  "Hall",
+  "Allen",
+  "Young",
+  "King",
 ];
 const PRODUCTS = [
-  "Coaching Program","Mastermind","1:1 Consulting","Group Cohort","Done-For-You Service",
+  "Coaching Program",
+  "Mastermind",
+  "1:1 Consulting",
+  "Group Cohort",
+  "Done-For-You Service",
 ];
 const DISP_WON = ["won"];
 const DISP_OBJ = ["price_objection", "timing", "decision_maker_absent"];
@@ -39,25 +79,46 @@ function irand(min: number, max: number) {
   return Math.floor(min + Math.random() * (max - min + 1));
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   const session = await getAuth().api.getSession({ headers: await headers() });
   if (!session?.user) return new Response("Unauthorized", { status: 401 });
 
+  const body = (await req.json()) as { workspaceId?: string };
+  if (!body.workspaceId) return new Response("workspaceId required", { status: 400 });
+
   const result = await bypassRls(async (db) => {
-    // Resolve user's workspace.
+    // Resolve and authorize the requested workspace explicitly. Demo seeding
+    // creates a sub-account and users, so it is workspace-admin only.
     const [member] = await db
       .select({ workspaceId: schema.memberships.workspaceId })
       .from(schema.memberships)
-      .where(sql`user_id = ${session.user.id} AND deleted_at IS NULL`)
+      .where(
+        sql`user_id = ${session.user.id}
+          AND workspace_id = ${body.workspaceId}
+          AND access_role = 'workspace_admin'
+          AND deleted_at IS NULL`,
+      )
       .limit(1);
-    if (!member) throw new Error("No workspace membership");
+    if (!member) return null;
     const workspaceId = member.workspaceId;
 
-    // Wipe any prior demo state.
+    // Wipe any prior demo state without touching demo users from other workspaces.
+    await db.execute(sql`
+      DELETE FROM "user" u
+      WHERE u.email LIKE 'demo-%@demo.test'
+        AND EXISTS (
+          SELECT 1
+          FROM memberships m
+          JOIN sub_accounts s ON s.id = m.sub_account_id
+          WHERE m.user_id = u.id
+            AND m.workspace_id = ${workspaceId}
+            AND s.workspace_id = ${workspaceId}
+            AND s.slug = 'demo'
+        )
+    `);
     await db.execute(
       sql`DELETE FROM sub_accounts WHERE workspace_id = ${workspaceId} AND slug = 'demo'`,
     );
-    await db.execute(sql`DELETE FROM "user" WHERE email LIKE 'demo-%@demo.test'`);
 
     // Pull required scaffolding (sales roles + dispositions) from the
     // workspace bootstrap.
@@ -91,8 +152,18 @@ export async function POST() {
     // Demo users.
     const stamp = Date.now();
     const demoUsers = [
-      { id: `demo-setter-${stamp}`, name: "Demo Setter", email: `demo-setter-${stamp}@demo.test`, role: "setter" },
-      { id: `demo-closer-${stamp}`, name: "Demo Closer", email: `demo-closer-${stamp}@demo.test`, role: "closer" },
+      {
+        id: `demo-setter-${stamp}`,
+        name: "Demo Setter",
+        email: `demo-setter-${stamp}@demo.test`,
+        role: "setter",
+      },
+      {
+        id: `demo-closer-${stamp}`,
+        name: "Demo Closer",
+        email: `demo-closer-${stamp}@demo.test`,
+        role: "closer",
+      },
       { id: `demo-cx-${stamp}`, name: "Demo CX", email: `demo-cx-${stamp}@demo.test`, role: "cx" },
     ];
     for (const u of demoUsers) {
@@ -118,9 +189,13 @@ export async function POST() {
 
     // Quotas (current month).
     const periodStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1))
-      .toISOString().slice(0, 10);
-    const periodEnd = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 0))
-      .toISOString().slice(0, 10);
+      .toISOString()
+      .slice(0, 10);
+    const periodEnd = new Date(
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 0),
+    )
+      .toISOString()
+      .slice(0, 10);
     await db.execute(sql`
       INSERT INTO goals (workspace_id, sub_account_id, user_id, kind, metric, target_value, currency, period_kind, period_start, period_end)
       VALUES
@@ -152,37 +227,62 @@ export async function POST() {
     const dayMs = 24 * 3600 * 1000;
     const now = Date.now();
     let wonCount = 0;
-    type CallSeed = { id: string; customerId: string; dispSlug: string | null; closedAt: Date | null };
+    type CallSeed = {
+      id: string;
+      customerId: string;
+      dispSlug: string | null;
+      closedAt: Date | null;
+    };
     const calls: CallSeed[] = [];
     for (let d = 30; d >= 0; d--) {
       const dayStart = now - d * dayMs;
       const callsToday = irand(2, 6);
       for (let i = 0; i < callsToday; i++) {
-        const apptAt = new Date(
-          dayStart + irand(9, 18) * 3600 * 1000 + irand(0, 59) * 60 * 1000,
-        );
+        const apptAt = new Date(dayStart + irand(9, 18) * 3600 * 1000 + irand(0, 59) * 60 * 1000);
         const customer = pick(customerIds);
-        const cRows = await db.execute<{ name: string | null; primary_email: string; phone: string | null }>(sql`
-          SELECT name, primary_email, phone FROM customers WHERE id = ${customer}
-        `);
-        const c = (cRows as unknown as Array<{
+        const cRows = await db.execute<{
           name: string | null;
           primary_email: string;
           phone: string | null;
-        }>)[0]!;
+        }>(sql`
+          SELECT name, primary_email, phone FROM customers WHERE id = ${customer}
+        `);
+        const c = (
+          cRows as unknown as Array<{
+            name: string | null;
+            primary_email: string;
+            phone: string | null;
+          }>
+        )[0]!;
         const r = Math.random();
         let dispSlug: string | null = null;
         let showed = false;
         let completed = false;
         if (d > 0) {
-          if (r < 0.25) { dispSlug = pick(DISP_WON); showed = true; completed = true; wonCount++; }
-          else if (r < 0.55) { dispSlug = pick(DISP_OBJ); showed = true; completed = true; }
-          else if (r < 0.75) { dispSlug = pick(DISP_LOST); showed = true; completed = true; }
-          else if (r < 0.9) { dispSlug = pick(DISP_NS); showed = false; completed = true; }
+          if (r < 0.25) {
+            dispSlug = pick(DISP_WON);
+            showed = true;
+            completed = true;
+            wonCount++;
+          } else if (r < 0.55) {
+            dispSlug = pick(DISP_OBJ);
+            showed = true;
+            completed = true;
+          } else if (r < 0.75) {
+            dispSlug = pick(DISP_LOST);
+            showed = true;
+            completed = true;
+          } else if (r < 0.9) {
+            dispSlug = pick(DISP_NS);
+            showed = false;
+            completed = true;
+          }
         }
-        const dispId = dispSlug ? dispBySlug[dispSlug] ?? null : null;
+        const dispId = dispSlug ? (dispBySlug[dispSlug] ?? null) : null;
         const showedAt = showed ? new Date(apptAt.getTime() + irand(0, 3) * 60 * 1000) : null;
-        const completedAt = completed ? new Date(apptAt.getTime() + irand(20, 50) * 60 * 1000) : null;
+        const completedAt = completed
+          ? new Date(apptAt.getTime() + irand(20, 50) * 60 * 1000)
+          : null;
         const duration = completed ? irand(900, 3600) : null;
         const callRows = await db.execute<{ id: string }>(sql`
           INSERT INTO calls (
@@ -312,6 +412,8 @@ export async function POST() {
       entries: entriesCount,
     };
   });
+
+  if (!result) return new Response("Forbidden", { status: 403 });
 
   return Response.json({ ok: true, ...result });
 }

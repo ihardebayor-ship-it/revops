@@ -28,3 +28,4 @@ export {
 } from "./oauth";
 export { createGhlClient, GHL_API_BASE, type GhlClient } from "./client";
 export { mapAppointmentToCall, type MappedCall } from "./field-mapping";
+export { ghlAppointmentCreateFixture, ghlAppointmentMissingLocationFixture } from "./fixtures";

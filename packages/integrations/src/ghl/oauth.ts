@@ -5,9 +5,11 @@
 // Callback: receive ?code=...&state=..., POST to token endpoint, get
 //   { access_token, refresh_token, expires_in, locationId, userId, ... }
 //
-// State is base64-encoded JSON containing { subAccountId, returnUrl }
-// so the callback can resolve the right tenant and route the user back.
+// State is signed JSON containing { subAccountId, returnUrl } so the
+// callback can resolve the right tenant and route the user back without
+// trusting caller-editable query params.
 
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { GHL_OAUTH_SCOPES } from "./events";
 
 const GHL_AUTH_BASE = "https://marketplace.gohighlevel.com/oauth/chooselocation";
@@ -23,8 +25,9 @@ export function buildInstallUrl(args: {
   state: GhlInstallState;
   redirectUri: string;
   clientId: string;
+  stateSecret: string;
 }): string {
-  const stateB64 = Buffer.from(JSON.stringify(args.state)).toString("base64url");
+  const stateB64 = encodeInstallState(args.state, args.stateSecret);
   const params = new URLSearchParams({
     response_type: "code",
     client_id: args.clientId,
@@ -35,9 +38,29 @@ export function buildInstallUrl(args: {
   return `${GHL_AUTH_BASE}?${params.toString()}`;
 }
 
-export function decodeInstallState(stateB64: string): GhlInstallState {
-  const json = Buffer.from(stateB64, "base64url").toString("utf8");
+export function decodeInstallState(stateB64: string, stateSecret: string): GhlInstallState {
+  const [payload, signature] = stateB64.split(".");
+  if (!payload || !signature) throw new Error("Invalid OAuth state");
+  const expected = signStatePayload(payload, stateSecret);
+  const signatureBytes = Buffer.from(signature, "base64url");
+  const expectedBytes = Buffer.from(expected, "base64url");
+  if (
+    signatureBytes.length !== expectedBytes.length ||
+    !timingSafeEqual(signatureBytes, expectedBytes)
+  ) {
+    throw new Error("Invalid OAuth state signature");
+  }
+  const json = Buffer.from(payload, "base64url").toString("utf8");
   return JSON.parse(json) as GhlInstallState;
+}
+
+function encodeInstallState(state: GhlInstallState, stateSecret: string): string {
+  const payload = Buffer.from(JSON.stringify(state)).toString("base64url");
+  return `${payload}.${signStatePayload(payload, stateSecret)}`;
+}
+
+function signStatePayload(payload: string, stateSecret: string): string {
+  return createHmac("sha256", stateSecret).update(payload).digest("base64url");
 }
 
 export type GhlTokenExchangeResult = {

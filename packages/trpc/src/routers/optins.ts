@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { optins as optinsDomain } from "@revops/domain";
-import { router, authedProcedure } from "../server";
+import { router, authedProcedure, authedProcedureWith } from "../server";
 
 export const optinsRouter = router({
   list: authedProcedure
@@ -27,7 +27,7 @@ export const optinsRouter = router({
   // M2 ships create as a tRPC mutation so the test endpoint and the
   // settings UI can spawn fixtures. Phase 1 M5 wires real form-webhook
   // intake (Typeform/JotForm) into the same domain function.
-  create: authedProcedure
+  create: authedProcedureWith("optin:create")
     .input(
       z.object({
         email: z.string().email(),

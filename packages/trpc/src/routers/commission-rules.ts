@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { commissionRules as rulesDomain } from "@revops/domain";
-import { can } from "@revops/auth/policy";
-import { router, authedProcedure } from "../server";
+import { router, authedProcedure, authedProcedureWith } from "../server";
 
 const matchSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("any") }),
@@ -20,7 +19,7 @@ export const commissionRulesRouter = router({
     return rulesDomain.listCommissionRules(ctx.db, ctx.user.workspaceId);
   }),
 
-  create: authedProcedure
+  create: authedProcedureWith("commission:rule:update")
     .input(
       z.object({
         name: z.string().min(1).max(200),
@@ -38,12 +37,6 @@ export const commissionRulesRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (!can(ctx.user, "commission:rule:update")) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Need workspace_admin to edit commission rules",
-        });
-      }
       return rulesDomain.createCommissionRule(ctx.db, {
         workspaceId: ctx.user.workspaceId,
         actorUserId: ctx.user.userId,
@@ -62,7 +55,7 @@ export const commissionRulesRouter = router({
       });
     }),
 
-  update: authedProcedure
+  update: authedProcedureWith("commission:rule:update")
     .input(
       z.object({
         ruleId: z.string().uuid(),
@@ -82,12 +75,6 @@ export const commissionRulesRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (!can(ctx.user, "commission:rule:update")) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Need workspace_admin to edit commission rules",
-        });
-      }
       return rulesDomain.updateCommissionRule(ctx.db, {
         ruleId: input.ruleId,
         workspaceId: ctx.user.workspaceId,
@@ -119,13 +106,10 @@ export const commissionRulesRouter = router({
       });
     }),
 
-  softDelete: authedProcedure
+  softDelete: authedProcedureWith("commission:rule:update")
     .input(z.object({ ruleId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (!can(ctx.user, "commission:rule:update")) {
-        throw new TRPCError({ code: "FORBIDDEN" });
-      }
       return rulesDomain.softDeleteCommissionRule(ctx.db, {
         ruleId: input.ruleId,
         workspaceId: ctx.user.workspaceId,

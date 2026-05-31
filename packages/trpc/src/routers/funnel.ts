@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { funnel as funnelDomain } from "@revops/domain";
-import { can } from "@revops/auth/policy";
-import { router, authedProcedure } from "../server";
+import { router, authedProcedure, authedProcedureWith } from "../server";
 
 export const funnelRouter = router({
   listStages: authedProcedure.query(async ({ ctx }) => {
@@ -10,7 +9,7 @@ export const funnelRouter = router({
     return funnelDomain.listStages(ctx.db, ctx.user.workspaceId);
   }),
 
-  updateStage: authedProcedure
+  updateStage: authedProcedureWith("salesrole:update")
     .input(
       z.object({
         stageId: z.string().uuid(),
@@ -20,9 +19,6 @@ export const funnelRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (!can(ctx.user, "salesrole:update")) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Need workspace_admin to edit funnel" });
-      }
       return funnelDomain.updateStage(ctx.db, {
         stageId: input.stageId,
         workspaceId: ctx.user.workspaceId,

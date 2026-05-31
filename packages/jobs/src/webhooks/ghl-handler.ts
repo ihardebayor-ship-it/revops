@@ -11,9 +11,14 @@
 
 import { NonRetriableError } from "inngest";
 import { and, eq } from "drizzle-orm";
-import { bypassRls, schema, type Db } from "@revops/db/client";
-import { GHL_PROVIDER_ID, ghlWebhookPayloadSchema, mapAppointmentToCall } from "@revops/integrations/ghl";
+import { bypassRls, schema, withTenant, type Db } from "@revops/db/client";
+import {
+  GHL_PROVIDER_ID,
+  ghlWebhookPayloadSchema,
+  mapAppointmentToCall,
+} from "@revops/integrations/ghl";
 import { funnel as funnelDomain } from "@revops/domain";
+import { logger } from "@revops/observability";
 import { inngest } from "../client";
 
 export type GhlProcessResult =
@@ -91,6 +96,12 @@ export async function processGhlInboundEvent(
         error: `No connection for locationId=${payload.locationId}`,
       })
       .where(eq(schema.webhookInboundEvents.id, row.id));
+    logger.warn("webhook.process_skipped", {
+      source: GHL_PROVIDER_ID,
+      inboundEventId: row.id,
+      reason: "no_connection_for_location",
+      providerAccountId: payload.locationId,
+    });
     return { skipped: true, reason: "no_connection_for_location" };
   }
 
@@ -100,70 +111,92 @@ export async function processGhlInboundEvent(
     contact: payload.contact,
   });
 
-  const [existing] = await db
-    .select({ id: schema.calls.id })
-    .from(schema.calls)
-    .where(
-      and(
-        eq(schema.calls.subAccountId, conn.subAccountId),
-        eq(schema.calls.sourceIntegration, GHL_PROVIDER_ID),
-        eq(schema.calls.externalId, mapped.externalId),
-      ),
-    )
-    .limit(1);
+  const result = await withTenant(
+    {
+      userId: "webhook:gohighlevel",
+      workspaceId: conn.workspaceId,
+      subAccountId: conn.subAccountId,
+      accessRole: "sub_account_admin",
+      isSuperadmin: false,
+    },
+    async (tenantDb) => {
+      const [existing] = await tenantDb
+        .select({ id: schema.calls.id })
+        .from(schema.calls)
+        .where(
+          and(
+            eq(schema.calls.subAccountId, conn.subAccountId),
+            eq(schema.calls.sourceIntegration, GHL_PROVIDER_ID),
+            eq(schema.calls.externalId, mapped.externalId),
+          ),
+        )
+        .limit(1);
 
-  let callId: string;
-  let createdNew = false;
-  if (existing) {
-    await db
-      .update(schema.calls)
-      .set({
-        appointmentAt: mapped.appointmentAt,
-        contactName: mapped.contactName,
-        contactEmail: mapped.contactEmail,
-        contactPhone: mapped.contactPhone,
-        metadata: mapped.metadata,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.calls.id, existing.id));
-    callId = existing.id;
-  } else {
-    const [inserted] = await db
-      .insert(schema.calls)
-      .values({
+      let callId: string;
+      let createdNew = false;
+      if (existing) {
+        await tenantDb
+          .update(schema.calls)
+          .set({
+            appointmentAt: mapped.appointmentAt,
+            contactName: mapped.contactName,
+            contactEmail: mapped.contactEmail,
+            contactPhone: mapped.contactPhone,
+            metadata: mapped.metadata,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.calls.id, existing.id));
+        callId = existing.id;
+      } else {
+        const [inserted] = await tenantDb
+          .insert(schema.calls)
+          .values({
+            workspaceId: conn.workspaceId,
+            subAccountId: conn.subAccountId,
+            contactName: mapped.contactName,
+            contactEmail: mapped.contactEmail,
+            contactPhone: mapped.contactPhone,
+            appointmentAt: mapped.appointmentAt,
+            sourceIntegration: GHL_PROVIDER_ID,
+            externalId: mapped.externalId,
+            metadata: mapped.metadata,
+          })
+          .returning({ id: schema.calls.id });
+        if (!inserted) throw new Error("Failed to insert call");
+        callId = inserted.id;
+        createdNew = true;
+      }
+
+      await funnelDomain.emitFunnelEvent(tenantDb, {
         workspaceId: conn.workspaceId,
         subAccountId: conn.subAccountId,
-        contactName: mapped.contactName,
-        contactEmail: mapped.contactEmail,
-        contactPhone: mapped.contactPhone,
-        appointmentAt: mapped.appointmentAt,
-        sourceIntegration: GHL_PROVIDER_ID,
-        externalId: mapped.externalId,
-        metadata: mapped.metadata,
-      })
-      .returning({ id: schema.calls.id });
-    if (!inserted) throw new Error("Failed to insert call");
-    callId = inserted.id;
-    createdNew = true;
-  }
+        entityType: "call",
+        entityId: callId,
+        stageSlug: createdNew ? "scheduled" : mapped.internalStatus,
+        occurredAt: mapped.appointmentAt,
+        sourceEventId: row.id,
+        meta: { via: "ghl.webhook", ghlStatus: mapped.ghlStatus },
+      });
 
-  await funnelDomain.emitFunnelEvent(db, {
-    workspaceId: conn.workspaceId,
-    subAccountId: conn.subAccountId,
-    entityType: "call",
-    entityId: callId,
-    stageSlug: createdNew ? "scheduled" : mapped.internalStatus,
-    occurredAt: mapped.appointmentAt,
-    sourceEventId: row.id,
-    meta: { via: "ghl.webhook", ghlStatus: mapped.ghlStatus },
-  });
+      return { callId, createdNew };
+    },
+  );
 
   await db
     .update(schema.webhookInboundEvents)
     .set({ processedAt: new Date() })
     .where(eq(schema.webhookInboundEvents.id, row.id));
 
-  return { skipped: false, callId, createdNew };
+  logger.info("webhook.processed", {
+    source: GHL_PROVIDER_ID,
+    inboundEventId: row.id,
+    workspaceId: conn.workspaceId,
+    subAccountId: conn.subAccountId,
+    callId: result.callId,
+    createdNew: result.createdNew,
+  });
+
+  return { skipped: false, ...result };
 }
 
 export const ghlWebhookHandler = inngest.createFunction(
@@ -179,9 +212,7 @@ export const ghlWebhookHandler = inngest.createFunction(
       .run("process", () => bypassRls((db) => processGhlInboundEvent(db, inboundEventId)))
       .catch((err) => {
         if (err instanceof NonRetriableError) throw err;
-        throw new Error(
-          `GHL webhook handler failed: ${err instanceof Error ? err.message : err}`,
-        );
+        throw new Error(`GHL webhook handler failed: ${err instanceof Error ? err.message : err}`);
       });
   },
 );

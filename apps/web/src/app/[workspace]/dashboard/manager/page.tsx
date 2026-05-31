@@ -8,7 +8,7 @@
 //   4. SLA dashboard
 //   5. Anomaly feed (auto-detected WoW shifts)
 
-import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { withTenant, schema } from "@revops/db/client";
 import { analytics } from "@revops/domain";
 import {
@@ -48,10 +48,7 @@ export default async function ManagerDashboardPage({
   if (!isAdmin) {
     return (
       <div className="mx-auto max-w-5xl">
-        <PageHeader
-          title="Manager dashboard"
-          description="This view is for managers and admins."
-        />
+        <PageHeader title="Manager dashboard" description="This view is for managers and admins." />
       </div>
     );
   }
@@ -171,7 +168,11 @@ export default async function ManagerDashboardPage({
 
   const coachingAlerts = data.board.flatMap((rep) => {
     const alerts: { rep: string; reason: string; severity: "warning" | "danger" }[] = [];
-    if (rep.attainmentTrend === "down" && rep.attainmentDeltaPct !== null && rep.attainmentDeltaPct < -0.2) {
+    if (
+      rep.attainmentTrend === "down" &&
+      rep.attainmentDeltaPct !== null &&
+      rep.attainmentDeltaPct < -0.2
+    ) {
       alerts.push({
         rep: rep.name || rep.email,
         reason: `attainment dropped ${(rep.attainmentDeltaPct * -100).toFixed(0)}% vs last period`,
@@ -206,9 +207,7 @@ export default async function ManagerDashboardPage({
         <ForecastCard
           headline={teamForecastHeadline(data.teamAttainment)}
           status={data.teamAttainment.status}
-          primaryValue={
-            <Money amount={data.teamAttainment.attained.toFixed(2)} currency="USD" />
-          }
+          primaryValue={<Money amount={data.teamAttainment.attained.toFixed(2)} currency="USD" />}
           primaryLabel={`of ${money(data.teamQuota, "USD")} team quota · ${data.teamAttainment.daysRemaining} days left`}
           secondaryValue={
             <Money amount={data.teamAttainment.forecastEnd.toFixed(2)} currency="USD" />
@@ -222,9 +221,7 @@ export default async function ManagerDashboardPage({
         <ForecastCard
           headline="No team quotas configured"
           status="on_pace"
-          primaryValue={
-            <Money amount={data.teamAttainment.attained.toFixed(2)} currency="USD" />
-          }
+          primaryValue={<Money amount={data.teamAttainment.attained.toFixed(2)} currency="USD" />}
           primaryLabel="team booked this month"
           progressPct={0}
           footnote="Set per-rep quotas in goals so the forecast lights up."
@@ -262,9 +259,7 @@ export default async function ManagerDashboardPage({
           label="Refund rate (30d)"
           value={refundRate !== null ? `${(refundRate * 100).toFixed(1)}%` : "—"}
           comparison={
-            data.refunds
-              ? `${data.refunds.refunded} of ${data.refunds.total} sales`
-              : undefined
+            data.refunds ? `${data.refunds.refunded} of ${data.refunds.total} sales` : undefined
           }
           invertColors
         />
@@ -334,9 +329,7 @@ export default async function ManagerDashboardPage({
                       <TrendArrow trend={rep.attainmentTrend} deltaPct={rep.attainmentDeltaPct} />
                     </td>
                     <td className="px-4 py-3 text-right text-zinc-400">
-                      {rep.vsMedian !== null
-                        ? `${(rep.vsMedian * 100).toFixed(0)}%`
-                        : "—"}
+                      {rep.vsMedian !== null ? `${(rep.vsMedian * 100).toFixed(0)}%` : "—"}
                     </td>
                     <td className="px-4 py-3 text-right text-zinc-400">{rep.closesCount}</td>
                     <td className="px-4 py-3 text-right text-zinc-400">{rep.pipelineCount}</td>
@@ -357,9 +350,7 @@ export default async function ManagerDashboardPage({
           <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
             {coachingAlerts.map((a, i) => (
               <li key={i} className="flex items-center gap-3 px-4 py-3 text-sm">
-                <Pill variant={a.severity === "danger" ? "danger" : "warning"}>
-                  {a.severity}
-                </Pill>
+                <Pill variant={a.severity === "danger" ? "danger" : "warning"}>{a.severity}</Pill>
                 <span className="font-medium text-zinc-100">{a.rep}</span>
                 <span className="flex-1 text-zinc-400">{a.reason}</span>
               </li>
@@ -416,9 +407,7 @@ export default async function ManagerDashboardPage({
           <span className="text-xs text-zinc-500">
             Total{" "}
             <Money
-              amount={data.bookedSeries
-                .reduce((acc, p) => acc + p.value, 0)
-                .toFixed(2)}
+              amount={data.bookedSeries.reduce((acc, p) => acc + p.value, 0).toFixed(2)}
               currency="USD"
             />
           </span>

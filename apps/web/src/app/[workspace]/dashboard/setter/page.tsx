@@ -99,10 +99,7 @@ export default async function SetterDashboardPage({
         noShowed: sql<number>`count(*) filter (where ${schema.dispositions.category} = 'no_show')::int`,
       })
       .from(schema.calls)
-      .leftJoin(
-        schema.dispositions,
-        eq(schema.dispositions.id, schema.calls.dispositionId),
-      )
+      .leftJoin(schema.dispositions, eq(schema.dispositions.id, schema.calls.dispositionId))
       .where(
         and(
           eq(schema.calls.subAccountId, subId),
@@ -218,11 +215,10 @@ export default async function SetterDashboardPage({
     };
   });
 
-  const speedCmp = analytics.compareMetrics(
-    data.speedThisWeek.medianSeconds ?? 0,
-    data.speedLastWeek.medianSeconds ?? null,
+  const bookingsCmp = analytics.compareMetrics(
+    data.thisWeekBookings,
+    data.lastWeekBookings || null,
   );
-  const bookingsCmp = analytics.compareMetrics(data.thisWeekBookings, data.lastWeekBookings || null);
   const showRate =
     data.showsThisWeek && data.showsThisWeek.scheduled > 0
       ? data.showsThisWeek.showed / data.showsThisWeek.scheduled
@@ -272,16 +268,10 @@ export default async function SetterDashboardPage({
           deltaPct={bookingsCmp.deltaPct}
           series={data.bookingsSeries}
           sparklineTone={
-            bookingsCmp.trend === "up"
-              ? "emerald"
-              : bookingsCmp.trend === "down"
-                ? "rose"
-                : "blue"
+            bookingsCmp.trend === "up" ? "emerald" : bookingsCmp.trend === "down" ? "rose" : "blue"
           }
           comparison={
-            bookingsCmp.previous !== null
-              ? `prev week ${bookingsCmp.previous}`
-              : "first week"
+            bookingsCmp.previous !== null ? `prev week ${bookingsCmp.previous}` : "first week"
           }
         />
         <MetricCard
@@ -297,9 +287,7 @@ export default async function SetterDashboardPage({
           label="No-show rate (7d)"
           value={noShowRate !== null ? `${(noShowRate * 100).toFixed(0)}%` : "—"}
           comparison={
-            data.showsThisWeek?.noShowed
-              ? `${data.showsThisWeek.noShowed} no-shows`
-              : "no no-shows"
+            data.showsThisWeek?.noShowed ? `${data.showsThisWeek.noShowed} no-shows` : "no no-shows"
           }
           invertColors
         />
@@ -307,19 +295,17 @@ export default async function SetterDashboardPage({
 
       <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-medium text-zinc-300">
-            Forward credit (next 14 days)
-          </h2>
+          <h2 className="text-sm font-medium text-zinc-300">Forward credit (next 14 days)</h2>
           <span className="text-base font-semibold text-emerald-400">
             <Money amount={data.expectedCredit.toFixed(2)} currency="USD" />
           </span>
         </div>
         <p className="text-xs text-zinc-400">
-          {data.upcomingAppts} upcoming appointments × {(data.historicalCloseRate * 100).toFixed(0)}%
-          historical close rate × avg deal{" "}
+          {data.upcomingAppts} upcoming appointments × {(data.historicalCloseRate * 100).toFixed(0)}
+          % historical close rate × avg deal{" "}
           <Money amount={data.avgDealSize.toFixed(0)} currency="USD" /> ×{" "}
-          {(data.setterShare * 100).toFixed(0)}% your share = expected commission credit
-          if every booking shows + closes at the workspace's typical rate.
+          {(data.setterShare * 100).toFixed(0)}% your share = expected commission credit if every
+          booking shows + closes at the workspace's typical rate.
         </p>
       </section>
 
@@ -338,9 +324,7 @@ export default async function SetterDashboardPage({
               const ageMin = Math.floor((Date.now() - new Date(l.submittedAt).getTime()) / 60000);
               return (
                 <li key={l.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-                  <Pill variant={ageMin > 30 ? "danger" : "warning"}>
-                    {ageMin}m old
-                  </Pill>
+                  <Pill variant={ageMin > 30 ? "danger" : "warning"}>{ageMin}m old</Pill>
                   <span className="flex-1 text-zinc-100">{l.name || l.email}</span>
                   <span className="text-xs text-zinc-500">
                     submitted <Time value={l.submittedAt} />
@@ -358,9 +342,7 @@ export default async function SetterDashboardPage({
           <span className="text-xs text-zinc-500">
             Total{" "}
             <Money
-              amount={data.commissionPipelineSeries
-                .reduce((acc, p) => acc + p.value, 0)
-                .toFixed(2)}
+              amount={data.commissionPipelineSeries.reduce((acc, p) => acc + p.value, 0).toFixed(2)}
               currency="USD"
             />
           </span>

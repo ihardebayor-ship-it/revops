@@ -1,13 +1,4 @@
-import {
-  boolean,
-  index,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { workspaces, subAccounts } from "./tenancy";
 
@@ -42,7 +33,9 @@ export const outboundWebhookSubscriptions = pgTable(
 );
 
 // webhook_inbound_events — idempotency surface for every inbound provider
-// webhook. Dedup on (source, external_id) so retries / replays are safe.
+// webhook. Dedup on (source, provider_account_id, external_id) so retries /
+// replays are safe without collapsing unrelated tenants whose providers reuse
+// external IDs.
 // NOT workspace-scoped: dedup happens before we know which workspace the
 // event maps to. Runtime handlers run under bypassRls.
 export const webhookInboundEvents = pgTable(
@@ -50,6 +43,7 @@ export const webhookInboundEvents = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     source: text("source").notNull(),
+    providerAccountId: text("provider_account_id").notNull().default("global"),
     externalId: text("external_id").notNull(),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
     payload: jsonb("payload").notNull().$type<Record<string, unknown>>(),
@@ -58,7 +52,11 @@ export const webhookInboundEvents = pgTable(
     error: text("error"),
   },
   (t) => ({
-    sourceExternalUq: unique("webhook_inbound_events_source_external_uq").on(t.source, t.externalId),
+    sourceAccountExternalUq: unique("webhook_inbound_events_source_account_external_uq").on(
+      t.source,
+      t.providerAccountId,
+      t.externalId,
+    ),
     receivedAtIdx: index("webhook_inbound_events_received_at_idx").on(t.receivedAt),
   }),
 );

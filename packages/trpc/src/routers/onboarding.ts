@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { schema } from "@revops/db/client";
 import { onboarding as onboardingDomain, goals as goalsDomain } from "@revops/domain";
-import { router, authedProcedure } from "../server";
+import { router, authedProcedure, authedProcedureWith } from "../server";
 
 const TOPOLOGY_PRESET = z.enum(["solo", "setter_closer", "setter_closer_cx", "custom"]);
 
@@ -27,7 +27,7 @@ export const onboardingRouter = router({
 
   // Rename the workspace (and update slug-derived display where it shows).
   // Slug stays stable so URLs don't break.
-  updateWorkspaceName: authedProcedure
+  updateWorkspaceName: authedProcedureWith("workspace:update")
     .input(z.object({ name: z.string().min(2).max(80) }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
@@ -41,7 +41,7 @@ export const onboardingRouter = router({
   // Switch topology preset (re-bootstrap roles + funnel + dispositions +
   // default commission rules from the new preset). Domain layer refuses
   // if any sales/calls already exist; tRPC surfaces the reason.
-  applyTopology: authedProcedure
+  applyTopology: authedProcedureWith("workspace:update")
     .input(z.object({ preset: TOPOLOGY_PRESET }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
@@ -59,7 +59,7 @@ export const onboardingRouter = router({
   // Set the calling user's first quota for the current month. This is
   // the bridge between sign-up and the closer/setter dashboards rendering
   // a real forecast instead of a "no quota set" fallback.
-  setFirstQuota: authedProcedure
+  setFirstQuota: authedProcedureWith("workspace:update")
     .input(
       z.object({
         targetValue: z.string().regex(/^\d+(\.\d{1,2})?$/, "Decimal amount required"),
@@ -71,9 +71,11 @@ export const onboardingRouter = router({
       }
       const now = new Date();
       const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-        .toISOString().slice(0, 10);
+        .toISOString()
+        .slice(0, 10);
       const periodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
-        .toISOString().slice(0, 10);
+        .toISOString()
+        .slice(0, 10);
       return goalsDomain.createGoal(ctx.db, {
         workspaceId: ctx.user.workspaceId,
         subAccountId: ctx.user.subAccountId,
@@ -89,7 +91,7 @@ export const onboardingRouter = router({
       });
     }),
 
-  markComplete: authedProcedure.mutation(async ({ ctx }) => {
+  markComplete: authedProcedureWith("workspace:update").mutation(async ({ ctx }) => {
     if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
     await ctx.db
       .update(schema.workspaceSettings)

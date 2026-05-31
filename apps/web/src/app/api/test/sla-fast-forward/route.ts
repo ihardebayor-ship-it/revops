@@ -1,18 +1,14 @@
 // Test-only endpoint: rewinds an optin's submitted_at by N minutes so the
-// SLA sweep treats it as past-deadline immediately. Refuses outside
-// development. Phase 2+ replaces this with a proper feature flag.
+// SLA sweep treats it as past-deadline immediately. Requires explicit
+// enablement plus platform-superadmin access.
 
 import { and, eq } from "drizzle-orm";
-import { headers } from "next/headers";
-import { getAuth } from "@revops/auth/server";
 import { bypassRls, schema } from "@revops/db/client";
+import { requireTestEndpointAccess } from "../_guard";
 
 export async function POST(req: Request) {
-  if (process.env.NODE_ENV === "production") {
-    return new Response("Disabled", { status: 404 });
-  }
-  const session = await getAuth().api.getSession({ headers: await headers() });
-  if (!session?.user) return new Response("Unauthorized", { status: 401 });
+  const access = await requireTestEndpointAccess();
+  if (access instanceof Response) return access;
 
   const body = (await req.json()) as { optinId?: string; minutes?: number };
   if (!body.optinId) return new Response("optinId required", { status: 400 });

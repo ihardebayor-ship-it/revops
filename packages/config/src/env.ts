@@ -1,21 +1,24 @@
 import { z } from "zod";
 
+const emptyToUndefined = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((val) => (val === "" ? undefined : val), schema);
+
+const optionalUrl = () => emptyToUndefined(z.string().url().optional());
+
 const requiredInProd = (schema: z.ZodString) =>
-  z.string().refine(
-    (val) => {
-      if (process.env.NODE_ENV === "production") {
-        return schema.safeParse(val).success;
-      }
-      return true;
-    },
-    { message: "Required in production" },
-  );
+  emptyToUndefined(schema.optional()).superRefine((val, ctx) => {
+    if (process.env.NODE_ENV === "production" && val === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Required in production" });
+    }
+  });
 
 const serverEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_URL: z.string().url().default("http://localhost:3000"),
+  ENABLE_TEST_ENDPOINTS: z.enum(["true", "false"]).default("false"),
 
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required (runtime, no BYPASSRLS)"),
+  DATABASE_URL_UNPOOLED: emptyToUndefined(z.string().min(1).optional()),
   DATABASE_MIGRATION_URL: z
     .string()
     .min(1, "DATABASE_MIGRATION_URL is required (migrations + bypassRls helper)"),
@@ -39,7 +42,7 @@ const serverEnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().email().default("onboarding@resend.dev"),
 
-  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_DSN: optionalUrl(),
 
   LANGFUSE_PUBLIC_KEY: z.string().optional(),
   LANGFUSE_SECRET_KEY: z.string().optional(),
@@ -52,7 +55,7 @@ const serverEnvSchema = z.object({
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_BUCKET: z.string().default("revops-pro"),
-  R2_PUBLIC_URL: z.string().url().optional(),
+  R2_PUBLIC_URL: optionalUrl(),
 
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
@@ -74,7 +77,7 @@ const serverEnvSchema = z.object({
 const clientEnvSchema = z.object({
   NEXT_PUBLIC_PUSHER_KEY: z.string().optional(),
   NEXT_PUBLIC_PUSHER_CLUSTER: z.string().default("us3"),
-  NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
+  NEXT_PUBLIC_SENTRY_DSN: optionalUrl(),
   NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
   NEXT_PUBLIC_POSTHOG_HOST: z.string().url().default("https://us.i.posthog.com"),
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),

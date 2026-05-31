@@ -135,7 +135,11 @@ export function OnboardingWizard({
     setError(null);
     setSeeding(true);
     try {
-      const res = await fetch("/api/onboarding/seed-demo", { method: "POST" });
+      const res = await fetch("/api/onboarding/seed-demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId: workspace.id }),
+      });
       if (!res.ok) {
         const text = await res.text();
         setError(parseTrpcError(text) || `Seed failed (${res.status})`);
@@ -151,9 +155,7 @@ export function OnboardingWizard({
     <div className="flex flex-col gap-6">
       <Stepper current={step} />
 
-      {error && (
-        <p className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-400">{error}</p>
-      )}
+      {error && <p className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-400">{error}</p>}
 
       {step === 1 && (
         <Step1
@@ -216,9 +218,7 @@ function Step1({
   return (
     <div className="flex flex-col gap-5">
       <label className="flex flex-col gap-1">
-        <span className="text-xs uppercase tracking-wider text-zinc-400">
-          Workspace name
-        </span>
+        <span className="text-xs uppercase tracking-wider text-zinc-400">Workspace name</span>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -227,9 +227,7 @@ function Step1({
       </label>
 
       <div className="flex flex-col gap-2">
-        <p className="text-xs uppercase tracking-wider text-zinc-400">
-          How does your team sell?
-        </p>
+        <p className="text-xs uppercase tracking-wider text-zinc-400">How does your team sell?</p>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {presets.map((p) => {
             const active = p.slug === presetSlug;
@@ -269,9 +267,7 @@ function Step1({
 function PresetPreview({ preset }: { preset: Preset }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-      <p className="text-xs uppercase tracking-wider text-zinc-400">
-        What this configures
-      </p>
+      <p className="text-xs uppercase tracking-wider text-zinc-400">What this configures</p>
       <div className="mt-3 flex flex-col gap-3">
         <div>
           <p className="text-xs text-zinc-500">Roles + commission split</p>
@@ -282,14 +278,9 @@ function PresetPreview({ preset }: { preset: Preset }) {
               </span>
             ) : (
               preset.roles.map((r) => (
-                <span
-                  key={r.slug}
-                  className="rounded bg-zinc-900 px-2 py-1 text-xs text-zinc-200"
-                >
+                <span key={r.slug} className="rounded bg-zinc-900 px-2 py-1 text-xs text-zinc-200">
                   {r.label}
-                  <span className="ml-1 text-blue-400">
-                    {(r.sharePct * 100).toFixed(0)}%
-                  </span>
+                  <span className="ml-1 text-blue-400">{(r.sharePct * 100).toFixed(0)}%</span>
                 </span>
               ))
             )}
@@ -303,12 +294,8 @@ function PresetPreview({ preset }: { preset: Preset }) {
             ) : (
               preset.stages.map((s, i) => (
                 <span key={s.slug} className="flex items-center gap-1">
-                  <span className="rounded bg-zinc-900 px-2 py-0.5 text-zinc-200">
-                    {s.label}
-                  </span>
-                  {i < preset.stages.length - 1 && (
-                    <span className="text-zinc-600">→</span>
-                  )}
+                  <span className="rounded bg-zinc-900 px-2 py-0.5 text-zinc-200">{s.label}</span>
+                  {i < preset.stages.length - 1 && <span className="text-zinc-600">→</span>}
                 </span>
               ))
             )}
@@ -345,25 +332,15 @@ function Step2({
     <div className="flex flex-col gap-5">
       <div>
         <p className="text-xs uppercase tracking-wider text-zinc-400">First quota</p>
-        <h2 className="mt-1 text-lg font-semibold text-zinc-100">
-          What's your monthly target?
-        </h2>
+        <h2 className="mt-1 text-lg font-semibold text-zinc-100">What's your monthly target?</h2>
         <p className="mt-1 text-sm text-zinc-400">
-          We use this on your dashboard's forecast card. You can change it anytime in
-          Settings → Goals.
+          We use this on your dashboard's forecast card. You can change it anytime in Settings →
+          Goals.
         </p>
       </div>
 
-      <label
-        className={
-          skipQuota
-            ? "flex flex-col gap-1 opacity-50"
-            : "flex flex-col gap-1"
-        }
-      >
-        <span className="text-xs uppercase tracking-wider text-zinc-400">
-          Monthly quota (USD)
-        </span>
+      <label className={skipQuota ? "flex flex-col gap-1 opacity-50" : "flex flex-col gap-1"}>
+        <span className="text-xs uppercase tracking-wider text-zinc-400">Monthly quota (USD)</span>
         <div className="flex items-center gap-2">
           <input
             value={quota}
@@ -441,10 +418,10 @@ function Step3({
           Want to start with sample data?
         </h2>
         <p className="mt-1 text-sm text-zinc-400">
-          We can seed a Demo sub-account with 30 days of realistic activity (50 customers,
-          ~125 calls, ~30 sales, refund + commission flows) so the dashboards aren't empty
-          on first paint. Your real workspace stays untouched — sample data lives in its
-          own sub-account you can delete later.
+          We can seed a Demo sub-account with 30 days of realistic activity (50 customers, ~125
+          calls, ~30 sales, refund + commission flows) so the dashboards aren't empty on first
+          paint. Your real workspace stays untouched — sample data lives in its own sub-account you
+          can delete later.
         </p>
       </div>
 
@@ -457,9 +434,7 @@ function Step3({
           <span className="rounded bg-blue-500/20 px-2 py-0.5 text-xs uppercase tracking-wider text-blue-300">
             Recommended
           </span>
-          <p className="text-base font-semibold text-zinc-100">
-            Yes — seed sample data
-          </p>
+          <p className="text-base font-semibold text-zinc-100">Yes — seed sample data</p>
           <p className="text-xs text-zinc-400">
             See the system populated immediately. ~10 seconds.
           </p>
@@ -474,9 +449,7 @@ function Step3({
           <span className="rounded bg-zinc-900 px-2 py-0.5 text-xs uppercase tracking-wider text-zinc-400">
             Skip
           </span>
-          <p className="text-base font-semibold text-zinc-100">
-            Take me to my empty workspace
-          </p>
+          <p className="text-base font-semibold text-zinc-100">Take me to my empty workspace</p>
           <p className="text-xs text-zinc-400">
             I'll connect integrations / log my own data first.
           </p>
@@ -522,11 +495,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
             >
               {done ? "✓" : s.n}
             </span>
-            <span
-              className={
-                active ? "text-zinc-100" : done ? "text-zinc-300" : "text-zinc-500"
-              }
-            >
+            <span className={active ? "text-zinc-100" : done ? "text-zinc-300" : "text-zinc-500"}>
               {s.label}
             </span>
             {i < steps.length - 1 && <span className="text-zinc-700">/</span>}
@@ -540,8 +509,7 @@ function Stepper({ current }: { current: 1 | 2 | 3 }) {
 function parseTrpcError(text: string): string {
   try {
     const j = JSON.parse(text);
-    const msg =
-      j?.[0]?.error?.json?.message ?? j?.error?.json?.message ?? j?.error?.message;
+    const msg = j?.[0]?.error?.json?.message ?? j?.error?.json?.message ?? j?.error?.message;
     if (typeof msg === "string") return msg;
   } catch {
     /* not JSON */

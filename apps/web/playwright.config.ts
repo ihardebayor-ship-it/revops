@@ -1,8 +1,6 @@
 // Playwright config for Phase 1 M5.7 smoke + golden-flow tests.
-// Local: `pnpm dev` in another terminal, then `pnpm test:e2e`. The
-// webServer hook is intentionally not enabled — Next dev startup is
-// slow and we'd rather opt into running tests against an already-warm
-// server than restart it per run.
+// Local: `pnpm dev` in another terminal, then `pnpm test:e2e`. CI runs
+// against the already-built app via the webServer hook below.
 
 import { defineConfig, devices } from "@playwright/test";
 
@@ -19,6 +17,14 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 5_000 },
   reporter: process.env.CI ? "github" : [["list"]],
+  webServer: process.env.CI
+    ? {
+        command: "pnpm start",
+        url: BASE_URL,
+        reuseExistingServer: false,
+        timeout: 120_000,
+      }
+    : undefined,
   use: {
     baseURL: BASE_URL,
     trace: "retain-on-failure",

@@ -3,7 +3,6 @@
 // topology preset metadata.
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq } from "drizzle-orm";
 import { BRAND_DEFAULTS } from "@revops/config/brand";
 import { platformSettings } from "./schema/platform";
 import * as schema from "./schema/index";

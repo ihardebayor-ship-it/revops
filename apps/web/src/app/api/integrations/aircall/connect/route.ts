@@ -5,6 +5,7 @@
 import { headers } from "next/headers";
 import { and, eq, isNull } from "drizzle-orm";
 import { getAuth } from "@revops/auth/server";
+import { can } from "@revops/auth/policy";
 import { bypassRls, schema } from "@revops/db/client";
 import { encryptToken } from "@revops/integrations/shared";
 import { AIRCALL_PROVIDER_ID, aircallPing } from "@revops/integrations/aircall";
@@ -21,10 +22,7 @@ export async function POST(req: Request) {
     label?: string;
   };
   if (!body.workspaceSlug || !body.apiId || !body.apiToken || !body.aircallUserId) {
-    return new Response(
-      "workspaceSlug, apiId, apiToken, aircallUserId required",
-      { status: 400 },
-    );
+    return new Response("workspaceSlug, apiId, apiToken, aircallUserId required", { status: 400 });
   }
 
   const ctx = await bypassRls(async (db) => {
@@ -32,15 +30,15 @@ export async function POST(req: Request) {
       .select({ id: schema.workspaces.id })
       .from(schema.workspaces)
       .where(
-        and(
-          eq(schema.workspaces.slug, body.workspaceSlug!),
-          isNull(schema.workspaces.deletedAt),
-        ),
+        and(eq(schema.workspaces.slug, body.workspaceSlug!), isNull(schema.workspaces.deletedAt)),
       )
       .limit(1);
     if (!ws) return null;
     const [member] = await db
-      .select({ subAccountId: schema.memberships.subAccountId })
+      .select({
+        accessRole: schema.memberships.accessRole,
+        subAccountId: schema.memberships.subAccountId,
+      })
       .from(schema.memberships)
       .where(
         and(
@@ -51,6 +49,21 @@ export async function POST(req: Request) {
       )
       .limit(1);
     if (!member?.subAccountId) return null;
+    if (
+      !can(
+        {
+          userId: session.user.id,
+          workspaceId: ws.id,
+          subAccountId: member.subAccountId,
+          accessRole: member.accessRole,
+          salesRoleSlugs: [],
+          isSuperadmin: false,
+        },
+        "integration:connect",
+      )
+    ) {
+      return null;
+    }
     return { workspaceId: ws.id, subAccountId: member.subAccountId };
   });
   if (!ctx) return new Response("Forbidden", { status: 403 });
@@ -90,6 +103,8 @@ export async function POST(req: Request) {
       .from(schema.dataSourceConnections)
       .where(
         and(
+          eq(schema.dataSourceConnections.workspaceId, ctx.workspaceId),
+          eq(schema.dataSourceConnections.subAccountId, ctx.subAccountId),
           eq(schema.dataSourceConnections.toolType, AIRCALL_PROVIDER_ID),
           eq(schema.dataSourceConnections.externalAccountId, body.aircallUserId!),
         ),

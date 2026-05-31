@@ -1,0 +1,3 @@
+ALTER TABLE "webhook_inbound_events" DROP CONSTRAINT "webhook_inbound_events_source_external_uq";--> statement-breakpoint
+ALTER TABLE "webhook_inbound_events" ADD COLUMN "provider_account_id" text DEFAULT 'global' NOT NULL;--> statement-breakpoint
+ALTER TABLE "webhook_inbound_events" ADD CONSTRAINT "webhook_inbound_events_source_account_external_uq" UNIQUE("source","provider_account_id","external_id");

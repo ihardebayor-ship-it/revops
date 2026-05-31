@@ -2,21 +2,28 @@
 // workspace seeded specifically for this test (so the assertions are
 // deterministic against known IDs).
 //
-// Status: SCAFFOLDED. The setup harness (programmatic sign-up, topology
-// selection, deterministic ID seeding) is the next piece of work; the
-// shape below is the intended structure. Currently skipped in CI so it
-// doesn't block PRs while the harness lands.
+// Status: OPT-IN. This flow needs a real database and test endpoint access,
+// not CI's stub DATABASE_URL. Keep public smoke tests as the PR gate and run
+// this locally/staging with the explicit env below.
 //
 // To run locally once the harness ships:
 //   pnpm dev (other terminal)
-//   PLAYWRIGHT_RUN_GOLDEN=1 pnpm test:e2e -g golden
+//   ENABLE_TEST_ENDPOINTS=true PLAYWRIGHT_RUN_GOLDEN=1 pnpm test:e2e -g golden
 
 import { expect, test } from "@playwright/test";
 
 const RUN_GOLDEN = process.env.PLAYWRIGHT_RUN_GOLDEN === "1";
+const REQUIRED_ENV = ["ENABLE_TEST_ENDPOINTS"] as const;
 
 test.describe("golden flow (Phase 1 happy path)", () => {
-  test.skip(!RUN_GOLDEN, "Set PLAYWRIGHT_RUN_GOLDEN=1 once the seed harness is live");
+  test.skip(!RUN_GOLDEN, "Set PLAYWRIGHT_RUN_GOLDEN=1 to run the DB-backed golden flow");
+
+  test.beforeAll(() => {
+    const missing = REQUIRED_ENV.filter((name) => process.env[name] !== "true");
+    if (missing.length > 0) {
+      throw new Error(`Golden flow requires: ${missing.join(", ")}=true`);
+    }
+  });
 
   test("sign-up → onboarding → call → sale → fast-forward → commission visible", async ({
     page,

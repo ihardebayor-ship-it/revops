@@ -14,6 +14,10 @@ CREATE OR REPLACE FUNCTION app_current_sub_account_id() RETURNS uuid AS $$
   SELECT NULLIF(current_setting('app.current_sub_account_id', true), '')::uuid;
 $$ LANGUAGE sql STABLE;
 
+CREATE OR REPLACE FUNCTION app_current_access_role() RETURNS text AS $$
+  SELECT NULLIF(current_setting('app.current_access_role', true), '');
+$$ LANGUAGE sql STABLE;
+
 CREATE OR REPLACE FUNCTION app_is_superadmin() RETURNS boolean AS $$
   SELECT current_setting('app.is_superadmin', true) = '1';
 $$ LANGUAGE sql STABLE;

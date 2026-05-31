@@ -12,9 +12,10 @@ export {
   type FathomInvitee,
 } from "./types";
 export { verifyFathomSignature } from "./signature";
+export { chunkTranscript, flattenTranscript, MAX_CHUNK_SIZE, MIN_CHUNK_SIZE } from "./chunk";
 export {
-  chunkTranscript,
-  flattenTranscript,
-  MAX_CHUNK_SIZE,
-  MIN_CHUNK_SIZE,
-} from "./chunk";
+  signFathomWebhookScope,
+  verifyFathomWebhookScope,
+  type FathomWebhookScope,
+} from "./webhook-key";
+export { fathomRecordingCompletedFixture, fathomRecordingMissingInviteesFixture } from "./fixtures";

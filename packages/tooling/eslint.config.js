@@ -17,7 +17,16 @@ export default tseslint.config(
       "**/.turbo/**",
       "**/coverage/**",
       "**/drizzle/**",
+      "scripts/**",
     ],
+  },
+  {
+    plugins: {
+      "@next/next": nextPlugin,
+    },
+    rules: {
+      "@next/next/no-html-link-for-pages": "off",
+    },
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -46,6 +55,10 @@ export default tseslint.config(
     rules: {
       ...reactPlugin.configs.recommended.rules,
       ...reactHooksPlugin.configs.recommended.rules,
+      ...nextPlugin.configs.recommended.rules,
+      ...nextPlugin.configs["core-web-vitals"].rules,
+      "@next/next/no-html-link-for-pages": "off",
+      "react/no-unescaped-entities": "off",
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
     },

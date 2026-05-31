@@ -6,7 +6,7 @@
 // Every tool execution writes one audit_log row, in a try/finally so
 // failures are recorded too. See ADR-0003 §2 + §9.
 
-import { z, type ZodSchema, type ZodTypeAny } from "zod";
+import { type z, type ZodSchema, type ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { type AuthContext } from "@revops/auth/policy";
 import { type Db, schema } from "@revops/db/client";
@@ -66,7 +66,17 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 function extractResourceId(input: unknown): string | null {
   if (!input || typeof input !== "object") return null;
   const obj = input as Record<string, unknown>;
-  const candidates = ["id", "resourceId", "saleId", "callId", "customerId", "taskId", "ruleId", "threadId", "userId"];
+  const candidates = [
+    "id",
+    "resourceId",
+    "saleId",
+    "callId",
+    "customerId",
+    "taskId",
+    "ruleId",
+    "threadId",
+    "userId",
+  ];
   for (const key of candidates) {
     const value = obj[key];
     if (typeof value === "string" && UUID_RE.test(value)) return value;

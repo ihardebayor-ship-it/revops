@@ -36,6 +36,13 @@
       "when": 1777678518912,
       "tag": "0004_complex_wendell_vaughn",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780240056116,
+      "tag": "0005_famous_sugar_man",
+      "breakpoints": true
     }
   ]
 }

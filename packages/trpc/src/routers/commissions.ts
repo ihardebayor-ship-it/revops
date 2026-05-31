@@ -3,16 +3,14 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, sql, sum } from "drizzle-orm";
 import { schema } from "@revops/db/client";
 import { inngest } from "@revops/jobs";
-import { router, authedProcedure } from "../server";
+import { router, authedProcedure, authedProcedureWith } from "../server";
 
 export const commissionsRouter = router({
   // Per-recipient list. Defaults to the calling user; admins can pass a userId.
   listMine: authedProcedure
     .input(
       z.object({
-        status: z
-          .enum(["pending", "available", "paid", "clawed_back", "voided"])
-          .optional(),
+        status: z.enum(["pending", "available", "paid", "clawed_back", "voided"]).optional(),
         limit: z.number().int().min(1).max(500).default(100),
       }),
     )
@@ -100,13 +98,10 @@ export const commissionsRouter = router({
   }),
 
   // Admin-triggered re-run for a single sale.
-  recomputeOne: authedProcedure
+  recomputeOne: authedProcedureWith("commission:rule:update")
     .input(z.object({ saleId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
-      if (ctx.user.accessRole !== "workspace_admin" && !ctx.user.isSuperadmin) {
-        throw new TRPCError({ code: "FORBIDDEN" });
-      }
       await inngest.send({
         name: "commission.recompute.requested",
         data: { saleId: input.saleId, reason: "admin.manual" },

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { calls as callsDomain } from "@revops/domain";
-import { router, authedProcedure } from "../server";
+import { router, authedProcedure, authedProcedureWith } from "../server";
 
 export const callsRouter = router({
   list: authedProcedure
@@ -34,7 +34,7 @@ export const callsRouter = router({
       });
     }),
 
-  create: authedProcedure
+  create: authedProcedureWith("call:create")
     .input(
       z.object({
         contactName: z.string().max(200).optional(),
@@ -55,8 +55,7 @@ export const callsRouter = router({
       }
       // Default closer to the calling user when not specified — covers the
       // Solo preset where the same person logs and runs the call.
-      const closerUserId =
-        input.closerUserId === undefined ? ctx.user.userId : input.closerUserId;
+      const closerUserId = input.closerUserId === undefined ? ctx.user.userId : input.closerUserId;
       return callsDomain.createCall(ctx.db, {
         workspaceId: ctx.user.workspaceId,
         subAccountId: ctx.user.subAccountId,
@@ -72,7 +71,7 @@ export const callsRouter = router({
       });
     }),
 
-  update: authedProcedure
+  update: authedProcedureWith("call:update")
     .input(
       z.object({
         callId: z.string().uuid(),
@@ -81,9 +80,7 @@ export const callsRouter = router({
         contactPhone: z.string().nullable().optional(),
         appointmentAt: z.string().datetime().nullable().optional(),
         notes: z.string().nullable().optional(),
-        recordingConsent: z
-          .enum(["one_party", "two_party", "unknown", "declined"])
-          .optional(),
+        recordingConsent: z.enum(["one_party", "two_party", "unknown", "declined"]).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -104,7 +101,7 @@ export const callsRouter = router({
       });
     }),
 
-  setDisposition: authedProcedure
+  setDisposition: authedProcedureWith("call:update")
     .input(z.object({ callId: z.string().uuid(), dispositionId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
@@ -119,7 +116,7 @@ export const callsRouter = router({
       });
     }),
 
-  setOutcome: authedProcedure
+  setOutcome: authedProcedureWith("call:update")
     .input(
       z.object({
         callId: z.string().uuid(),
@@ -147,7 +144,7 @@ export const callsRouter = router({
       });
     }),
 
-  linkOptin: authedProcedure
+  linkOptin: authedProcedureWith("call:update")
     .input(z.object({ callId: z.string().uuid(), optinId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId || !ctx.user.subAccountId) {
@@ -162,7 +159,7 @@ export const callsRouter = router({
       });
     }),
 
-  softDelete: authedProcedure
+  softDelete: authedProcedureWith("call:delete")
     .input(z.object({ callId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });

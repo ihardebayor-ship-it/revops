@@ -14,14 +14,7 @@ export interface AxiomLogger {
 
 const consoleLogger: AxiomLogger = {
   log(level, message, attrs) {
-    const fn =
-      level === "error"
-        ? console.error
-        : level === "warn"
-          ? console.warn
-          : level === "debug"
-            ? console.debug
-            : console.info;
+    const fn = level === "error" ? console.error : level === "warn" ? console.warn : console.info;
     if (attrs) fn(`[${level}] ${message}`, attrs);
     else fn(`[${level}] ${message}`);
   },
