@@ -2,6 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { withTenant, schema } from "@revops/db/client";
 import { EmptyState, PageHeader, Pill, Time } from "@revops/ui";
 import { resolveWorkspaceBySlug } from "~/lib/workspace";
+import { WebhookHealthSummary } from "./webhook-health-summary";
 
 const PROVIDERS = [
   {
@@ -88,6 +89,8 @@ export default async function IntegrationsPage({
           </a>
         }
       />
+
+      <WebhookHealthSummary workspaceId={ctx.workspace.id} subAccountId={subAccountId} />
 
       <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
         {PROVIDERS.map((p) => {

@@ -6,7 +6,14 @@ const mocks = vi.hoisted(() => ({
   eqCalls: [] as unknown[][],
   emitFunnelEvent: vi.fn(),
   schema: {
-    agentFacts: { table: "agent_facts" },
+    agentFacts: {
+      table: "agent_facts",
+      id: "agent_facts.id",
+      workspaceId: "agent_facts.workspace_id",
+      scope: "agent_facts.scope",
+      scopeRefId: "agent_facts.scope_ref_id",
+      content: "agent_facts.content",
+    },
     calls: {
       id: "calls.id",
       externalId: "calls.external_id",
@@ -151,6 +158,38 @@ describe("webhook processors", () => {
     );
   });
 
+  it("replays GHL events by updating the existing call instead of inserting", async () => {
+    const mainDb = createDb({
+      selectResults: [
+        [
+          {
+            id: "inbound-ghl-replay",
+            payload: ghlAppointmentCreateFixture,
+            processedAt: null,
+          },
+        ],
+        [{ workspaceId: "workspace-1", subAccountId: "sub-1" }],
+      ],
+    });
+    const tenantDb = createDb({
+      selectResults: [[{ id: "call-existing" }]],
+    });
+    mocks.activeTenantDb = tenantDb;
+
+    const result = await processGhlInboundEvent(mainDb as never, "inbound-ghl-replay");
+
+    expect(result).toEqual({ skipped: false, callId: "call-existing", createdNew: false });
+    expect(tenantDb.inserts).toEqual([]);
+    expect(tenantDb.updates[0]?.table).toBe(mockSchema.calls);
+    expect(mocks.emitFunnelEvent).toHaveBeenCalledWith(
+      tenantDb,
+      expect.objectContaining({
+        entityId: "call-existing",
+        sourceEventId: "inbound-ghl-replay",
+      }),
+    );
+  });
+
   it("processes Aircall events inside the resolved connection tenant", async () => {
     const mainDb = createDb({
       selectResults: [
@@ -196,6 +235,42 @@ describe("webhook processors", () => {
         subAccountId: "sub-2",
         stageSlug: "completed",
         sourceEventId: "inbound-aircall-1",
+      }),
+    );
+  });
+
+  it("replays Aircall events by updating the existing call instead of inserting", async () => {
+    const mainDb = createDb({
+      selectResults: [
+        [
+          {
+            id: "inbound-aircall-replay",
+            payload: aircallEndedFixture,
+            processedAt: null,
+          },
+        ],
+        [{ workspaceId: "workspace-2", subAccountId: "sub-2" }],
+      ],
+    });
+    const tenantDb = createDb({
+      selectResults: [[{ id: "call-existing-aircall" }]],
+    });
+    mocks.activeTenantDb = tenantDb;
+
+    const result = await processAircallInboundEvent(mainDb as never, "inbound-aircall-replay");
+
+    expect(result).toEqual({
+      skipped: false,
+      callId: "call-existing-aircall",
+      createdNew: false,
+    });
+    expect(tenantDb.inserts).toEqual([]);
+    expect(tenantDb.updates[0]?.table).toBe(mockSchema.calls);
+    expect(mocks.emitFunnelEvent).toHaveBeenCalledWith(
+      tenantDb,
+      expect.objectContaining({
+        entityId: "call-existing-aircall",
+        sourceEventId: "inbound-aircall-replay",
       }),
     );
   });
@@ -270,6 +345,38 @@ describe("webhook processors", () => {
     expect(result).toEqual({ skipped: true, reason: "invalid_provider_account_id" });
     expect(mocks.withTenant).not.toHaveBeenCalled();
     expect(mainDb.updates[0]?.values).toMatchObject({ error: "invalid_provider_account_id" });
+  });
+
+  it("does not duplicate Fathom facts when replaying identical content", async () => {
+    const mainDb = createDb({
+      selectResults: [
+        [
+          {
+            id: "inbound-fathom-replay",
+            providerAccountId: "subAccount:sub-allowed",
+            payload: fathomRecordingCompletedFixture,
+            processedAt: null,
+          },
+        ],
+        [
+          {
+            id: "customer-1",
+            workspaceId: "workspace-3",
+            subAccountId: "sub-allowed",
+          },
+        ],
+      ],
+    });
+    const tenantDb = createDb({
+      selectResults: [[{ id: "fact-existing" }]],
+    });
+    mocks.activeTenantDb = tenantDb;
+
+    const result = await processFathomInboundEvent(mainDb as never, "inbound-fathom-replay");
+
+    expect(result).toEqual({ skipped: false, customerId: "customer-1", chunks: 1, tokens: 10 });
+    expect(tenantDb.inserts).toEqual([]);
+    expect(mocks.eqCalls).toContainEqual([mockSchema.agentFacts.content, expect.any(String)]);
   });
 });
 

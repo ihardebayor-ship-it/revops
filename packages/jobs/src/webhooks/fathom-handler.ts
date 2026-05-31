@@ -138,12 +138,27 @@ export async function processFathomInboundEvent(
     },
     async (tenantDb) => {
       for (let i = 0; i < chunks.length; i++) {
+        const content = chunks[i]!;
+        const [existingFact] = await tenantDb
+          .select({ id: schema.agentFacts.id })
+          .from(schema.agentFacts)
+          .where(
+            and(
+              eq(schema.agentFacts.workspaceId, resolved.workspaceId),
+              eq(schema.agentFacts.scope, "customer"),
+              eq(schema.agentFacts.scopeRefId, resolved.customerId),
+              eq(schema.agentFacts.content, content),
+            ),
+          )
+          .limit(1);
+        if (existingFact) continue;
+
         await tenantDb.insert(schema.agentFacts).values({
           workspaceId: resolved.workspaceId,
           scope: "customer",
           scopeRefId: resolved.customerId,
           kind: "fact",
-          content: chunks[i]!,
+          content,
           embedding: vectors[i]!,
           confidence: "0.70",
         });

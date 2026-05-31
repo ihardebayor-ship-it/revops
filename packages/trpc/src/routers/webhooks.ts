@@ -15,6 +15,69 @@ type ProviderAccountPair = {
 };
 
 export const webhooksRouter = router({
+  summary: authedProcedureWith("integration:connect")
+    .input(z.object({ limit: z.number().int().min(1).max(1000).default(500) }).default({}))
+    .query(async ({ ctx, input }) => {
+      if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+
+      return bypassRls(async (db) => {
+        const providerPairs = await listAllowedProviderAccounts(db, {
+          workspaceId: ctx.user.workspaceId!,
+          subAccountId: ctx.user.subAccountId,
+        });
+        const providerCondition = buildProviderCondition(providerPairs);
+        if (!providerCondition) return emptySummary();
+
+        const rows = await db
+          .select({
+            source: schema.webhookInboundEvents.source,
+            receivedAt: schema.webhookInboundEvents.receivedAt,
+            processedAt: schema.webhookInboundEvents.processedAt,
+            error: schema.webhookInboundEvents.error,
+          })
+          .from(schema.webhookInboundEvents)
+          .where(providerCondition)
+          .orderBy(desc(schema.webhookInboundEvents.receivedAt))
+          .limit(input.limit);
+
+        return rows.reduce((summary, row) => {
+          const status = webhookDomain.classifyInboundWebhookEvent(row);
+          summary.total += 1;
+          summary[status] += 1;
+          summary.bySource[row.source] ??= {
+            total: 0,
+            pending: 0,
+            processed: 0,
+            failed: 0,
+            lastReceivedAt: null,
+            lastProcessedAt: null,
+          };
+          const sourceSummary = summary.bySource[row.source]!;
+          sourceSummary.total += 1;
+          sourceSummary[status] += 1;
+          if (!summary.lastReceivedAt || row.receivedAt > summary.lastReceivedAt) {
+            summary.lastReceivedAt = row.receivedAt;
+          }
+          if (
+            row.processedAt &&
+            (!summary.lastProcessedAt || row.processedAt > summary.lastProcessedAt)
+          ) {
+            summary.lastProcessedAt = row.processedAt;
+          }
+          if (!sourceSummary.lastReceivedAt || row.receivedAt > sourceSummary.lastReceivedAt) {
+            sourceSummary.lastReceivedAt = row.receivedAt;
+          }
+          if (
+            row.processedAt &&
+            (!sourceSummary.lastProcessedAt || row.processedAt > sourceSummary.lastProcessedAt)
+          ) {
+            sourceSummary.lastProcessedAt = row.processedAt;
+          }
+          return summary;
+        }, emptySummary());
+      });
+    }),
+
   listInbound: authedProcedureWith("integration:connect")
     .input(
       z
@@ -203,6 +266,28 @@ function getReplayEventName(source: string) {
   if (source === "aircall") return "aircall.webhook.received";
   if (source === "fathom") return "fathom.webhook.received";
   return null;
+}
+
+function emptySummary() {
+  return {
+    total: 0,
+    pending: 0,
+    processed: 0,
+    failed: 0,
+    lastReceivedAt: null as Date | null,
+    lastProcessedAt: null as Date | null,
+    bySource: {} as Record<
+      string,
+      {
+        total: number;
+        pending: number;
+        processed: number;
+        failed: number;
+        lastReceivedAt: Date | null;
+        lastProcessedAt: Date | null;
+      }
+    >,
+  };
 }
 
 function dedupeProviderPairs(pairs: ProviderAccountPair[]) {
