@@ -205,6 +205,22 @@ export async function recomputeCommissionsForSale(
       // as distinct), so we can't ON CONFLICT when ruleId is NULL.
       // For NULL ruleId we delete-then-insert pending/available rows.
       if (e.ruleId === null) {
+        const [lockedExisting] = await tx
+          .select({ id: schema.commissionEntries.id })
+          .from(schema.commissionEntries)
+          .where(
+            and(
+              eq(schema.commissionEntries.saleId, sale.id),
+              eq(schema.commissionEntries.installmentId, e.installmentId),
+              eq(schema.commissionEntries.recipientUserId, e.userId),
+              eq(schema.commissionEntries.salesRoleId, e.salesRoleId),
+              isNull(schema.commissionEntries.ruleId),
+              sql`${schema.commissionEntries.status} IN ('paid', 'clawed_back')`,
+            ),
+          )
+          .limit(1);
+        if (lockedExisting) continue;
+
         await tx
           .delete(schema.commissionEntries)
           .where(

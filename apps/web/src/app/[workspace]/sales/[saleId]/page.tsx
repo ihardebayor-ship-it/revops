@@ -71,6 +71,8 @@ export default async function SaleDetailPage({
         availableAt: schema.commissionEntries.availableAt,
         paidAt: schema.commissionEntries.paidAt,
         clawedBackAt: schema.commissionEntries.clawedBackAt,
+        canceledAt: schema.commissionEntries.canceledAt,
+        canceledReason: schema.commissionEntries.canceledReason,
         computedFrom: schema.commissionEntries.computedFrom,
       })
       .from(schema.commissionEntries)
@@ -211,6 +213,18 @@ export default async function SaleDetailPage({
                       {explanation.matchedRule.paidOn}; {explanation.hold.holdDays} day hold from{" "}
                       {explanation.hold.anchorSource.replace("_", " ")}. Recipient source:{" "}
                       {explanation.recipient.source.replace(/_/g, " ")}.
+                    </p>
+                  )}
+                  {e.status === "voided" && e.canceledReason && (
+                    <p className="rounded-md border border-zinc-800 px-3 py-2 text-xs text-zinc-500">
+                      Voided because {e.canceledReason.replace(/_/g, " ")}
+                      {e.canceledAt ? (
+                        <>
+                          {" "}
+                          on <Time value={e.canceledAt} />
+                        </>
+                      ) : null}
+                      .
                     </p>
                   )}
                 </li>
