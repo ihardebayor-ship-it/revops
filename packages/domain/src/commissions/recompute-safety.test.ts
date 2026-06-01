@@ -42,6 +42,12 @@ describe("commission recompute ledger safety", () => {
     expect(deletedSaleSection).toContain('canceledReason: "sale_deleted"');
     expect(deletedSaleSection).toContain("status} IN ('pending', 'available')");
   });
+
+  it("uses a bigint advisory lock key and does not store system triggers as rule-version users", () => {
+    expect(recomputeSource).toContain("pg_advisory_xact_lock(${lockKey}::bigint)");
+    expect(recomputeSource).toContain("const versionMap = await snapshotRules(tx, matchedRules);");
+    expect(recomputeSource).not.toContain("snapshotRules(tx, matchedRules, args.triggeredBy)");
+  });
 });
 
 function sectionBetween(source: string, start: string, end: string): string {

@@ -34,12 +34,12 @@ export type RecomputeResult = {
   durationMs: number;
 };
 
-const ADVISORY_LOCK_NS = 0x434f4d4d; // "COMM"
+const ADVISORY_LOCK_SEED = 0x434f4d4d; // "COMM"
 
 function saleAdvisoryKey(saleId: string): bigint {
   // Postgres pg_advisory_xact_lock(int8). UUID has no native bigint;
   // we hash the bytes into 64 bits. FNV-1a 64.
-  let hash = 0xcbf29ce484222325n;
+  let hash = 0xcbf29ce484222325n ^ BigInt(ADVISORY_LOCK_SEED);
   const bytes = new TextEncoder().encode(saleId);
   for (const b of bytes) {
     hash ^= BigInt(b);
@@ -59,7 +59,7 @@ export async function recomputeCommissionsForSale(
   return outerDb.transaction(async (tx) => {
     // Serialize all recompute runs for the same sale.
     const lockKey = saleAdvisoryKey(args.saleId);
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_NS}::int, ${lockKey}::int)`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`);
 
     // 1. Load sale + recipients + installments.
     const [sale] = await tx
@@ -141,7 +141,7 @@ export async function recomputeCommissionsForSale(
       sourceIntegration: sale.sourceIntegration,
       closedAt: sale.closedAt,
     });
-    const versionMap = await snapshotRules(tx, matchedRules, args.triggeredBy);
+    const versionMap = await snapshotRules(tx, matchedRules);
 
     // Index rules by salesRoleId for recipient pairing. Multiple rules
     // for one role: prefer the first (deterministic by ID order).
