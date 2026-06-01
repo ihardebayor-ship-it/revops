@@ -13,7 +13,12 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { type Db, schema } from "@revops/db/client";
 import { selectRulesForSale, snapshotRules, rulesetHash, type MatchedRule } from "./select-rules";
-import { computeEntriesForInstallment, type ComputeRecipient, type ComputeInstallment, type ComputedEntry } from "./compute";
+import {
+  computeEntriesForInstallment,
+  type ComputeRecipient,
+  type ComputeInstallment,
+  type ComputedEntry,
+} from "./compute";
 
 export type RecomputeArgs = {
   saleId: string;
@@ -76,14 +81,26 @@ export async function recomputeCommissionsForSale(
       // Soft-deleted sale: void all non-terminal entries and exit.
       await tx
         .update(schema.commissionEntries)
-        .set({ status: "voided", canceledAt: new Date(), canceledReason: "sale_deleted", updatedAt: new Date() })
+        .set({
+          status: "voided",
+          canceledAt: new Date(),
+          canceledReason: "sale_deleted",
+          updatedAt: new Date(),
+        })
         .where(
           and(
             eq(schema.commissionEntries.saleId, sale.id),
             sql`${schema.commissionEntries.status} IN ('pending', 'available')`,
           ),
         );
-      return { saleId: sale.id, recipientCount: 0, entryCount: 0, voidedCount: 0, rulesetHash: "deleted", durationMs: Date.now() - t0 };
+      return {
+        saleId: sale.id,
+        recipientCount: 0,
+        entryCount: 0,
+        voidedCount: 0,
+        rulesetHash: "deleted",
+        durationMs: Date.now() - t0,
+      };
     }
 
     const recipientRows = await tx
@@ -94,6 +111,7 @@ export async function recomputeCommissionsForSale(
         salesRoleVersionId: schema.commissionRecipients.salesRoleVersionId,
         sharePct: schema.commissionRecipients.sharePct,
         currency: schema.commissionRecipients.currency,
+        metadata: schema.commissionRecipients.metadata,
       })
       .from(schema.commissionRecipients)
       .where(
@@ -145,9 +163,10 @@ export async function recomputeCommissionsForSale(
         userId: rcp.userId,
         salesRoleId: rcp.salesRoleId,
         salesRoleVersionId: rcp.salesRoleVersionId,
+        recipientSource: typeof rcp.metadata.source === "string" ? rcp.metadata.source : "unknown",
         sharePct: Number(rcp.sharePct),
         ruleId: rule?.id ?? null,
-        ruleVersionId: rule ? versionMap.get(rule.id) ?? null : null,
+        ruleVersionId: rule ? (versionMap.get(rule.id) ?? null) : null,
         ruleHoldDays: rule?.holdDays ?? 30,
         rulePaidOn: rule?.paidOn ?? "collected",
         ruleCurrency: rule?.currency ?? rcp.currency,

@@ -42,6 +42,7 @@ export default async function CommissionsListPage({
           availableAt: schema.commissionEntries.availableAt,
           paidAt: schema.commissionEntries.paidAt,
           clawedBackAt: schema.commissionEntries.clawedBackAt,
+          computedFrom: schema.commissionEntries.computedFrom,
           createdAt: schema.commissionEntries.createdAt,
           productName: schema.sales.productName,
         })
@@ -119,32 +120,39 @@ export default async function CommissionsListPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
-              {result.rows.map((r) => (
-                <tr key={r.id} className="hover:bg-zinc-900/50">
-                  <td className="px-4 py-3">
-                    <a
-                      href={`/${slug}/sales/${r.saleId}`}
-                      className="block hover:text-blue-400"
-                    >
-                      {r.productName || "Sale"}
-                    </a>
-                  </td>
-                  <td className="px-4 py-3 text-right text-zinc-100">
-                    <Money amount={r.amount} currency={r.currency} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <Pill variant={STATUS_VARIANT[r.status] ?? "neutral"}>
-                      {r.status.replace("_", " ")}
-                    </Pill>
-                  </td>
-                  <td className="px-4 py-3 text-zinc-400">
-                    {r.availableAt ? <Time value={r.availableAt} /> : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-500">
-                    <Time value={r.createdAt} />
-                  </td>
-                </tr>
-              ))}
+              {result.rows.map((r) => {
+                const explanation = getCommissionExplanation(r.computedFrom);
+                return (
+                  <tr key={r.id} className="hover:bg-zinc-900/50">
+                    <td className="px-4 py-3">
+                      <a href={`/${slug}/sales/${r.saleId}`} className="block hover:text-blue-400">
+                        {r.productName || "Sale"}
+                      </a>
+                      {explanation && (
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {explanation.amount.base} base ×{" "}
+                          {Math.round(explanation.amount.sharePct * 100)}% share ·{" "}
+                          {explanation.matchedRule.paidOn} · {explanation.hold.holdDays} day hold
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right text-zinc-100">
+                      <Money amount={r.amount} currency={r.currency} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Pill variant={STATUS_VARIANT[r.status] ?? "neutral"}>
+                        {r.status.replace("_", " ")}
+                      </Pill>
+                    </td>
+                    <td className="px-4 py-3 text-zinc-400">
+                      {r.availableAt ? <Time value={r.availableAt} /> : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-500">
+                      <Time value={r.createdAt} />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -190,4 +198,25 @@ function FilterTab({
       {children}
     </a>
   );
+}
+
+type CommissionExplanation = {
+  matchedRule: {
+    paidOn: string;
+  };
+  amount: {
+    base: string;
+    sharePct: number;
+  };
+  hold: {
+    holdDays: number;
+  };
+};
+
+function getCommissionExplanation(
+  computedFrom: Record<string, unknown>,
+): CommissionExplanation | null {
+  const explanation = computedFrom.explanation;
+  if (!explanation || typeof explanation !== "object") return null;
+  return explanation as CommissionExplanation;
 }

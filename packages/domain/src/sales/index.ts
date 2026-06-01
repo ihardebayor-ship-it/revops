@@ -253,6 +253,7 @@ export async function createSale(db: Db, input: CreateSaleInput): Promise<Create
     }
 
     // 4. Recipients
+    const recipientsDerived = !input.recipients || input.recipients.length === 0;
     let recipients = input.recipients;
     if (!recipients || recipients.length === 0) {
       recipients = await deriveRecipients(tx, {
@@ -313,6 +314,9 @@ export async function createSale(db: Db, input: CreateSaleInput): Promise<Create
         sharePct: rcp.sharePct,
         currency,
         status: "pending",
+        metadata: {
+          source: recipientsDerived ? "sales_role_assignment" : "manual",
+        },
         createdBy: input.createdBy,
       });
     }

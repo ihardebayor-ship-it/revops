@@ -16,6 +16,7 @@ export type ComputeRecipient = {
   userId: string;
   salesRoleId: string;
   salesRoleVersionId: string;
+  recipientSource: string;
   sharePct: number; // 0–1
   ruleId: string | null;
   ruleVersionId: string | null;
@@ -55,18 +56,30 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function pendingUntilFor(installment: ComputeInstallment, holdDays: number): Date {
+function explainBase(installment: ComputeInstallment, paidOn: string) {
+  if (paidOn === "collected" && installment.actualAmount && installment.status === "collected") {
+    return {
+      amount: Number(installment.actualAmount),
+      source: "actual_amount",
+      reason: "paid_on_collected_and_installment_collected",
+    };
+  }
+  return {
+    amount: Number(installment.expectedAmount),
+    source: "expected_amount",
+    reason: paidOn === "booked" ? "paid_on_booked" : "installment_not_collected",
+  };
+}
+
+function explainHold(installment: ComputeInstallment, holdDays: number) {
   const anchor = installment.collectedAt
     ? installment.collectedAt
     : new Date(`${installment.expectedDate}T00:00:00Z`);
-  return new Date(anchor.getTime() + holdDays * DAY_MS);
-}
-
-function chooseBase(installment: ComputeInstallment, paidOn: string): number {
-  if (paidOn === "collected" && installment.actualAmount && installment.status === "collected") {
-    return Number(installment.actualAmount);
-  }
-  return Number(installment.expectedAmount);
+  return {
+    anchor,
+    anchorSource: installment.collectedAt ? "collected_at" : "expected_date",
+    pendingUntil: new Date(anchor.getTime() + holdDays * DAY_MS),
+  };
 }
 
 export function computeEntriesForInstallment(
@@ -80,7 +93,8 @@ export function computeEntriesForInstallment(
   // first recipient's rule.paidOn to decide. In practice all recipients
   // should be on rules with the same paidOn for sane configurations.)
   const primary = recipients[0]!;
-  const base = chooseBase(installment, primary.rulePaidOn);
+  const baseExplanation = explainBase(installment, primary.rulePaidOn);
+  const base = baseExplanation.amount;
 
   // First pass — raw amounts.
   const raw = recipients.map((r) => round2(base * r.sharePct));
@@ -98,7 +112,7 @@ export function computeEntriesForInstallment(
   }
 
   return recipients.map((r, i) => {
-    const pendingUntil = pendingUntilFor(installment, r.ruleHoldDays);
+    const hold = explainHold(installment, r.ruleHoldDays);
     return {
       installmentId: installment.id,
       recipientId: r.recipientId,
@@ -109,17 +123,49 @@ export function computeEntriesForInstallment(
       ruleVersionId: r.ruleVersionId,
       amount: raw[i]!.toFixed(2),
       currency: r.ruleCurrency,
-      pendingUntil,
-      availableAt: pendingUntil,
+      pendingUntil: hold.pendingUntil,
+      availableAt: hold.pendingUntil,
       computedFrom: {
         base: base.toFixed(2),
+        baseSource: baseExplanation.source,
+        baseReason: baseExplanation.reason,
         sharePct: r.sharePct,
         holdDays: r.ruleHoldDays,
+        holdReason: `${r.ruleHoldDays} day hold from ${hold.anchorSource}`,
         paidOn: r.rulePaidOn,
         installmentStatus: installment.status,
-        anchor: installment.collectedAt
-          ? installment.collectedAt.toISOString()
-          : `${installment.expectedDate}T00:00:00Z`,
+        anchor: hold.anchor.toISOString(),
+        explanation: {
+          matchedRule: {
+            ruleId: r.ruleId,
+            ruleVersionId: r.ruleVersionId,
+            paidOn: r.rulePaidOn,
+            holdDays: r.ruleHoldDays,
+            currency: r.ruleCurrency,
+          },
+          recipient: {
+            recipientId: r.recipientId,
+            userId: r.userId,
+            salesRoleId: r.salesRoleId,
+            salesRoleVersionId: r.salesRoleVersionId,
+            source: r.recipientSource,
+            sharePct: r.sharePct,
+          },
+          amount: {
+            base: base.toFixed(2),
+            baseSource: baseExplanation.source,
+            baseReason: baseExplanation.reason,
+            sharePct: r.sharePct,
+            computedAmount: raw[i]!.toFixed(2),
+            currency: r.ruleCurrency,
+          },
+          hold: {
+            holdDays: r.ruleHoldDays,
+            anchor: hold.anchor.toISOString(),
+            anchorSource: hold.anchorSource,
+            pendingUntil: hold.pendingUntil.toISOString(),
+          },
+        },
       },
     };
   });

@@ -2,7 +2,11 @@
 // Covers the algorithm-spec edge cases listed in the M4 plan.
 
 import { describe, expect, it } from "vitest";
-import { computeEntriesForInstallment, type ComputeInstallment, type ComputeRecipient } from "./compute";
+import {
+  computeEntriesForInstallment,
+  type ComputeInstallment,
+  type ComputeRecipient,
+} from "./compute";
 
 function recipient(over: Partial<ComputeRecipient> = {}): ComputeRecipient {
   return {
@@ -10,6 +14,7 @@ function recipient(over: Partial<ComputeRecipient> = {}): ComputeRecipient {
     userId: "u-1",
     salesRoleId: "role-1",
     salesRoleVersionId: "rv-1",
+    recipientSource: "sales_role_assignment",
     sharePct: 1,
     ruleId: "rule-1",
     ruleVersionId: "rv-1",
@@ -130,8 +135,68 @@ describe("computeEntriesForInstallment", () => {
     const out = computeEntriesForInstallment(installment(), [recipient({ sharePct: 0.6 })]);
     const cf = out[0]!.computedFrom;
     expect(cf.base).toBe("1000.00");
+    expect(cf.baseSource).toBe("expected_amount");
+    expect(cf.baseReason).toBe("installment_not_collected");
     expect(cf.sharePct).toBe(0.6);
     expect(cf.holdDays).toBe(30);
+    expect(cf.holdReason).toBe("30 day hold from expected_date");
     expect(cf.paidOn).toBe("collected");
+  });
+
+  it("computedFrom explanation records rule, recipient, amount, and hold reasoning", () => {
+    const collectedAt = new Date("2026-06-01T12:00:00Z");
+    const out = computeEntriesForInstallment(
+      installment({
+        actualAmount: "800.00",
+        collectedAt,
+        status: "collected",
+      }),
+      [
+        recipient({
+          recipientId: "recipient-1",
+          userId: "user-1",
+          salesRoleId: "role-1",
+          salesRoleVersionId: "role-version-1",
+          recipientSource: "manual",
+          sharePct: 1,
+          ruleId: "rule-1",
+          ruleVersionId: "rule-version-1",
+          ruleHoldDays: 7,
+          rulePaidOn: "collected",
+        }),
+      ],
+    );
+
+    expect(out[0]!.computedFrom.explanation).toEqual({
+      matchedRule: {
+        ruleId: "rule-1",
+        ruleVersionId: "rule-version-1",
+        paidOn: "collected",
+        holdDays: 7,
+        currency: "USD",
+      },
+      recipient: {
+        recipientId: "recipient-1",
+        userId: "user-1",
+        salesRoleId: "role-1",
+        salesRoleVersionId: "role-version-1",
+        source: "manual",
+        sharePct: 1,
+      },
+      amount: {
+        base: "800.00",
+        baseSource: "actual_amount",
+        baseReason: "paid_on_collected_and_installment_collected",
+        sharePct: 1,
+        computedAmount: "800.00",
+        currency: "USD",
+      },
+      hold: {
+        holdDays: 7,
+        anchor: collectedAt.toISOString(),
+        anchorSource: "collected_at",
+        pendingUntil: "2026-06-08T12:00:00.000Z",
+      },
+    });
   });
 });

@@ -23,7 +23,7 @@ export default async function SaleDetailPage({
       salesDomain.getSaleInstallments(db, { saleId }),
     ]);
     const customer = sale.customerId
-      ? (
+      ? ((
           await db
             .select({
               id: schema.customers.id,
@@ -33,7 +33,7 @@ export default async function SaleDetailPage({
             .from(schema.customers)
             .where(eq(schema.customers.id, sale.customerId))
             .limit(1)
-        )[0] ?? null
+        )[0] ?? null)
       : null;
 
     const suggestions = sale.linkedCallId
@@ -45,7 +45,7 @@ export default async function SaleDetailPage({
         });
 
     const linkedCall = sale.linkedCallId
-      ? (
+      ? ((
           await db
             .select({
               id: schema.calls.id,
@@ -56,7 +56,7 @@ export default async function SaleDetailPage({
             .from(schema.calls)
             .where(eq(schema.calls.id, sale.linkedCallId))
             .limit(1)
-        )[0] ?? null
+        )[0] ?? null)
       : null;
 
     const entries = await db
@@ -71,6 +71,7 @@ export default async function SaleDetailPage({
         availableAt: schema.commissionEntries.availableAt,
         paidAt: schema.commissionEntries.paidAt,
         clawedBackAt: schema.commissionEntries.clawedBackAt,
+        computedFrom: schema.commissionEntries.computedFrom,
       })
       .from(schema.commissionEntries)
       .where(eq(schema.commissionEntries.saleId, saleId))
@@ -154,9 +155,7 @@ export default async function SaleDetailPage({
           <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
             {recipients.map((r) => (
               <li key={r.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-                <span className="font-mono text-xs text-zinc-500">
-                  {r.userId.slice(0, 8)}
-                </span>
+                <span className="font-mono text-xs text-zinc-500">{r.userId.slice(0, 8)}</span>
                 <span className="flex-1 text-zinc-100">
                   {Math.round(Number(r.sharePct) * 100)}% share
                 </span>
@@ -177,31 +176,46 @@ export default async function SaleDetailPage({
           </p>
         ) : (
           <ul className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
-            {entries.map((e) => (
-              <li
-                key={e.id}
-                className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-sm"
-              >
-                <span className="col-span-3 font-mono text-xs text-zinc-500">
-                  {e.recipientUserId.slice(0, 8)}
-                </span>
-                <span className="col-span-3 text-zinc-100">
-                  <Money amount={e.amount} currency={e.currency} />
-                </span>
-                <span className="col-span-3">
-                  <Pill variant={entryStatusVariant[e.status] ?? "neutral"}>
-                    {e.status.replace("_", " ")}
-                  </Pill>
-                </span>
-                <span className="col-span-3 text-right text-xs text-zinc-500">
-                  {e.status === "pending" && e.pendingUntil ? (
-                    <>Holds until <Time value={e.pendingUntil} /></>
-                  ) : e.availableAt ? (
-                    <Time value={e.availableAt} />
-                  ) : null}
-                </span>
-              </li>
-            ))}
+            {entries.map((e) => {
+              const explanation = getCommissionExplanation(e.computedFrom);
+              return (
+                <li key={e.id} className="flex flex-col gap-2 px-4 py-3 text-sm">
+                  <div className="grid grid-cols-12 items-center gap-3">
+                    <span className="col-span-3 font-mono text-xs text-zinc-500">
+                      {e.recipientUserId.slice(0, 8)}
+                    </span>
+                    <span className="col-span-3 text-zinc-100">
+                      <Money amount={e.amount} currency={e.currency} />
+                    </span>
+                    <span className="col-span-3">
+                      <Pill variant={entryStatusVariant[e.status] ?? "neutral"}>
+                        {e.status.replace("_", " ")}
+                      </Pill>
+                    </span>
+                    <span className="col-span-3 text-right text-xs text-zinc-500">
+                      {e.status === "pending" && e.pendingUntil ? (
+                        <>
+                          Holds until <Time value={e.pendingUntil} />
+                        </>
+                      ) : e.availableAt ? (
+                        <Time value={e.availableAt} />
+                      ) : null}
+                    </span>
+                  </div>
+                  {explanation && (
+                    <p className="rounded-md bg-zinc-900/60 px-3 py-2 text-xs text-zinc-400">
+                      {explanation.amount.base} base ×{" "}
+                      {Math.round(explanation.amount.sharePct * 100)}% share ={" "}
+                      {explanation.amount.computedAmount} {explanation.amount.currency}. Rule{" "}
+                      {shortId(explanation.matchedRule.ruleId)} paid on{" "}
+                      {explanation.matchedRule.paidOn}; {explanation.hold.holdDays} day hold from{" "}
+                      {explanation.hold.anchorSource.replace("_", " ")}. Recipient source:{" "}
+                      {explanation.recipient.source.replace(/_/g, " ")}.
+                    </p>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -221,9 +235,7 @@ export default async function SaleDetailPage({
                 Due {new Date(i.expectedDate).toLocaleDateString()}
               </span>
               <span className="col-span-3">
-                <Pill variant={i.status === "collected" ? "positive" : "neutral"}>
-                  {i.status}
-                </Pill>
+                <Pill variant={i.status === "collected" ? "positive" : "neutral"}>{i.status}</Pill>
               </span>
               <span className="col-span-2 text-right text-zinc-500">
                 {i.collectedAt && <Time value={i.collectedAt} />}
@@ -234,6 +246,39 @@ export default async function SaleDetailPage({
       </section>
     </div>
   );
+}
+
+type CommissionExplanation = {
+  matchedRule: {
+    ruleId: string | null;
+    paidOn: string;
+    holdDays: number;
+  };
+  recipient: {
+    source: string;
+  };
+  amount: {
+    base: string;
+    sharePct: number;
+    computedAmount: string;
+    currency: string;
+  };
+  hold: {
+    holdDays: number;
+    anchorSource: string;
+  };
+};
+
+function getCommissionExplanation(
+  computedFrom: Record<string, unknown>,
+): CommissionExplanation | null {
+  const explanation = computedFrom.explanation;
+  if (!explanation || typeof explanation !== "object") return null;
+  return explanation as CommissionExplanation;
+}
+
+function shortId(id: string | null): string {
+  return id ? id.slice(0, 8) : "default";
 }
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
