@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
+import { can } from "@revops/auth/policy";
 import { withTenant, schema } from "@revops/db/client";
 import { sales as salesDomain, reconciliation as reconDomain } from "@revops/domain";
 import { Money, PageHeader, Pill, Time } from "@revops/ui";
 import { resolveWorkspaceBySlug } from "~/lib/workspace";
 import { LinkerCard } from "./linker-card";
+import { RecomputeCommissionButton } from "./recompute-commission-button";
 import { RefundCard } from "./refund-card";
 
 export default async function SaleDetailPage({
@@ -132,6 +134,7 @@ export default async function SaleDetailPage({
     clawed_back: "danger",
     voided: "neutral",
   };
+  const canRecomputeCommissions = can(ctx.authCtx, "commission:rule:update");
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -209,9 +212,18 @@ export default async function SaleDetailPage({
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-medium text-zinc-300">
-          Commission entries · {entries.length}
-        </h2>
+        <div className="mb-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <h2 className="text-sm font-medium text-zinc-300">
+            Commission entries · {entries.length}
+          </h2>
+          {canRecomputeCommissions && (
+            <RecomputeCommissionButton
+              saleId={sale.id}
+              workspaceId={ctx.workspace.id}
+              subAccountId={ctx.membership.subAccountId}
+            />
+          )}
+        </div>
         {recomputeRuns.length > 0 && (
           <div className="mb-3 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

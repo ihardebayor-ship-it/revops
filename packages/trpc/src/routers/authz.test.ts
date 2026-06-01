@@ -80,6 +80,17 @@ describe("commission ops safeguards", () => {
     expect(commissionsSource).toContain("missingExplanation");
     expect(commissionsSource).toContain("stalePending");
   });
+
+  it("validates sale scope before queueing a recompute", () => {
+    expect(commissionsSource).toContain("recomputeOne: authedProcedureWith");
+    expect(commissionsSource).toContain("eq(schema.sales.id, input.saleId)");
+    expect(commissionsSource).toContain("eq(schema.sales.workspaceId, ctx.user.workspaceId)");
+    expect(commissionsSource).toContain("eq(schema.sales.subAccountId, ctx.user.subAccountId)");
+    expect(commissionsSource).toContain('throw new TRPCError({ code: "NOT_FOUND" })');
+    expect(commissionsSource.indexOf("const [sale]")).toBeLessThan(
+      commissionsSource.indexOf("await inngest.send"),
+    );
+  });
 });
 
 function findPlainAuthedMutations(source: string): string[] {

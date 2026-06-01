@@ -176,6 +176,20 @@ export const commissionsRouter = router({
     .input(z.object({ saleId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+      const saleConditions = [
+        eq(schema.sales.id, input.saleId),
+        eq(schema.sales.workspaceId, ctx.user.workspaceId),
+      ];
+      if (ctx.user.subAccountId)
+        saleConditions.push(eq(schema.sales.subAccountId, ctx.user.subAccountId));
+
+      const [sale] = await ctx.db
+        .select({ id: schema.sales.id })
+        .from(schema.sales)
+        .where(and(...saleConditions))
+        .limit(1);
+      if (!sale) throw new TRPCError({ code: "NOT_FOUND" });
+
       await inngest.send({
         name: "commission.recompute.requested",
         data: { saleId: input.saleId, reason: "admin.manual" },
