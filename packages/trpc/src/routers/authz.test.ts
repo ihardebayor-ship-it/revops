@@ -8,6 +8,7 @@ const callsSource = readFileSync(new URL("./calls.ts", import.meta.url), "utf8")
 const salesSource = readFileSync(new URL("./sales.ts", import.meta.url), "utf8");
 const webhooksSource = readFileSync(new URL("./webhooks.ts", import.meta.url), "utf8");
 const commissionsSource = readFileSync(new URL("./commissions.ts", import.meta.url), "utf8");
+const reconciliationSource = readFileSync(new URL("./reconciliation.ts", import.meta.url), "utf8");
 
 describe("router mutation authorization", () => {
   it("does not define mutations from plain authedProcedure", () => {
@@ -104,6 +105,17 @@ describe("commission ops safeguards", () => {
     expect(commissionsSource).toContain('eq(schema.commissionEntries.status, "pending")');
     expect(commissionsSource).toContain("lte(schema.commissionEntries.pendingUntil, new Date())");
     expect(commissionsSource).toContain('status: "available"');
+  });
+});
+
+describe("reconciliation ops safeguards", () => {
+  it("permission-gates and tenant-scopes rejected link suggestions", () => {
+    expect(reconciliationSource).toContain("rejectSuggestedLink: authedProcedureWith");
+    expect(reconciliationSource).toContain('authedProcedureWith("sale:link")');
+    expect(reconciliationSource).toContain("workspaceId: ctx.user.workspaceId");
+    expect(reconciliationSource).toContain("subAccountId: ctx.user.subAccountId");
+    expect(reconciliationSource).toContain("actorUserId: ctx.user.userId");
+    expect(reconciliationSource).toContain('throw new TRPCError({ code: "NOT_FOUND" })');
   });
 });
 

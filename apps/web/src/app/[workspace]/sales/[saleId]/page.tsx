@@ -169,6 +169,8 @@ export default async function SaleDetailPage({
       <LinkerCard
         slug={slug}
         saleId={sale.id}
+        workspaceId={ctx.workspace.id}
+        subAccountId={sale.subAccountId}
         linkedCall={linkedCall}
         suggestions={suggestions.map((s) => ({
           callId: s.callId,

@@ -197,6 +197,14 @@ export type SuggestedLink = {
   };
 };
 
+const REJECTED_LINKS_METADATA_KEY = "rejectedReconciliationLinks";
+
+type RejectedReconciliationLink = {
+  callId: string;
+  rejectedAt: string;
+  rejectedBy: string;
+};
+
 /**
  * Suggest top-K candidate calls for a given unlinked sale. Filters to
  * calls in the same sub_account closed within ±14 days of the sale,
@@ -215,6 +223,7 @@ export async function suggestLinksForSale(
       customerId: schema.sales.customerId,
       bookedAmount: schema.sales.bookedAmount,
       closedAt: schema.sales.closedAt,
+      metadata: schema.sales.metadata,
     })
     .from(schema.sales)
     .where(
@@ -248,6 +257,8 @@ export async function suggestLinksForSale(
   const lower = new Date(sale.closedAt.getTime() - 14 * 24 * 3600 * 1000);
   const upper = new Date(sale.closedAt.getTime() + 14 * 24 * 3600 * 1000);
 
+  const rejectedCallIds = rejectedReconciliationCallIds(sale.metadata);
+
   const candidates = await db
     .select({
       id: schema.calls.id,
@@ -272,6 +283,7 @@ export async function suggestLinksForSale(
 
   const scored: SuggestedLink[] = [];
   for (const call of candidates) {
+    if (rejectedCallIds.has(call.id)) continue;
     const result = scoreCallSaleMatch({
       call: {
         contactEmail: call.contactEmail,
@@ -294,6 +306,96 @@ export async function suggestLinksForSale(
 
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit);
+}
+
+export async function rejectSuggestedLink(
+  db: Db,
+  args: {
+    saleId: string;
+    callId: string;
+    workspaceId: string;
+    subAccountId: string;
+    actorUserId: string;
+  },
+): Promise<{ rejected: true; saleId: string; callId: string }> {
+  return db.transaction(async (tx) => {
+    const [pair] = await tx
+      .select({
+        saleId: schema.sales.id,
+        callId: schema.calls.id,
+        metadata: schema.sales.metadata,
+      })
+      .from(schema.sales)
+      .innerJoin(schema.calls, eq(schema.calls.id, args.callId))
+      .where(
+        and(
+          eq(schema.sales.id, args.saleId),
+          eq(schema.sales.workspaceId, args.workspaceId),
+          eq(schema.sales.subAccountId, args.subAccountId),
+          isNull(schema.sales.deletedAt),
+          isNull(schema.sales.linkedCallId),
+          eq(schema.calls.workspaceId, args.workspaceId),
+          eq(schema.calls.subAccountId, args.subAccountId),
+          isNull(schema.calls.deletedAt),
+          isNull(schema.calls.linkedSaleId),
+        ),
+      )
+      .limit(1);
+    if (!pair) throw new Error("Sale or call not found");
+
+    const existing = rejectedReconciliationLinks(pair.metadata);
+    const nextLinks = existing.some((link) => link.callId === args.callId)
+      ? existing
+      : [
+          ...existing,
+          {
+            callId: args.callId,
+            rejectedAt: new Date().toISOString(),
+            rejectedBy: args.actorUserId,
+          },
+        ];
+
+    await tx
+      .update(schema.sales)
+      .set({
+        metadata: { ...pair.metadata, [REJECTED_LINKS_METADATA_KEY]: nextLinks },
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.sales.id, args.saleId),
+          eq(schema.sales.workspaceId, args.workspaceId),
+          eq(schema.sales.subAccountId, args.subAccountId),
+          isNull(schema.sales.deletedAt),
+        ),
+      );
+
+    return { rejected: true, saleId: args.saleId, callId: args.callId };
+  });
+}
+
+function rejectedReconciliationCallIds(metadata: Record<string, unknown>): Set<string> {
+  return new Set(rejectedReconciliationLinks(metadata).map((link) => link.callId));
+}
+
+function rejectedReconciliationLinks(
+  metadata: Record<string, unknown>,
+): RejectedReconciliationLink[] {
+  const raw = metadata[REJECTED_LINKS_METADATA_KEY];
+  if (!Array.isArray(raw)) return [];
+
+  return raw.flatMap((value) => {
+    if (!value || typeof value !== "object") return [];
+    const link = value as Record<string, unknown>;
+    if (
+      typeof link.callId !== "string" ||
+      typeof link.rejectedAt !== "string" ||
+      typeof link.rejectedBy !== "string"
+    ) {
+      return [];
+    }
+    return [link as RejectedReconciliationLink];
+  });
 }
 
 export async function unlinkedSalesQueue(db: Db, args: { subAccountId: string; limit?: number }) {

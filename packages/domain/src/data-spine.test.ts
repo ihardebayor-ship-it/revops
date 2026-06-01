@@ -82,6 +82,23 @@ describe("data spine tenant guards", () => {
     expect(reconciliationSource).toContain("eq(schema.calls.workspaceId, args.workspaceId)");
     expect(reconciliationSource).toContain("eq(schema.calls.subAccountId, sale.subAccountId)");
   });
+
+  it("keeps rejected reconciliation suggestions tenant-scoped and filtered", () => {
+    const rejectSection = sectionBetween(
+      reconciliationSource,
+      "export async function rejectSuggestedLink",
+      "function rejectedReconciliationCallIds",
+    );
+
+    expect(reconciliationSource).toContain("rejectedReconciliationCallIds(sale.metadata)");
+    expect(reconciliationSource).toContain("if (rejectedCallIds.has(call.id)) continue");
+    expect(rejectSection).toContain("eq(schema.sales.workspaceId, args.workspaceId)");
+    expect(rejectSection).toContain("eq(schema.sales.subAccountId, args.subAccountId)");
+    expect(rejectSection).toContain("eq(schema.calls.workspaceId, args.workspaceId)");
+    expect(rejectSection).toContain("eq(schema.calls.subAccountId, args.subAccountId)");
+    expect(rejectSection).toContain("isNull(schema.sales.linkedCallId)");
+    expect(rejectSection).toContain("isNull(schema.calls.linkedSaleId)");
+  });
 });
 
 function sectionBetween(source: string, start: string, end: string): string {
