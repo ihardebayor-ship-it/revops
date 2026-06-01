@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, sql, sum } from "drizzle-orm";
+import { and, desc, eq, lte, sql, sum } from "drizzle-orm";
 import { schema } from "@revops/db/client";
 import { inngest } from "@revops/jobs";
 import { router, authedProcedure, authedProcedureWith } from "../server";
@@ -169,6 +169,28 @@ export const commissionsRouter = router({
       recentRuns,
       latestRecomputeAt: recentRuns[0]?.runAt ?? null,
     };
+  }),
+
+  // Production-safe release sweep for elapsed holds. Only pending rows in the
+  // caller's active workspace/sub-account scope can transition to available.
+  releaseAvailable: authedProcedureWith("commission:approve").mutation(async ({ ctx }) => {
+    if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+    const releaseConditions = [
+      eq(schema.commissionEntries.workspaceId, ctx.user.workspaceId),
+      eq(schema.commissionEntries.status, "pending"),
+      lte(schema.commissionEntries.pendingUntil, new Date()),
+    ];
+    if (ctx.user.subAccountId) {
+      releaseConditions.push(eq(schema.commissionEntries.subAccountId, ctx.user.subAccountId));
+    }
+
+    const released = await ctx.db
+      .update(schema.commissionEntries)
+      .set({ status: "available", updatedAt: new Date() })
+      .where(and(...releaseConditions))
+      .returning({ id: schema.commissionEntries.id });
+
+    return { released: released.length };
   }),
 
   // Admin-triggered re-run for a single sale.

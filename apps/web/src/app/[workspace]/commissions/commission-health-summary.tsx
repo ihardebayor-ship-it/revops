@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Pill, Time } from "@revops/ui";
 
 type CommissionHealth = {
@@ -27,12 +28,18 @@ type TrpcBatchResponse<T> = Array<{
 export function CommissionHealthSummary({
   workspaceId,
   subAccountId,
+  canRelease,
 }: {
   workspaceId: string;
   subAccountId: string | null;
+  canRelease: boolean;
 }) {
+  const router = useRouter();
   const [health, setHealth] = useState<CommissionHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
 
   useEffect(() => {
     let cancelled = false;
@@ -71,6 +78,22 @@ export function CommissionHealthSummary({
   const failedRuns = health.recentRuns.filter((run) => run.error).length;
   const needsAttention = health.stalePending > 0 || health.missingExplanation > 0 || failedRuns > 0;
 
+  function releaseAvailable() {
+    setActionMessage(null);
+    setActionError(null);
+    startTransition(async () => {
+      try {
+        const result = await releaseAvailableEntries(workspaceId, subAccountId);
+        const next = await fetchCommissionHealth(workspaceId, subAccountId);
+        setHealth(next);
+        setActionMessage(`Released ${result.released} eligible entries.`);
+        router.refresh();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : String(err));
+      }
+    });
+  }
+
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -85,6 +108,20 @@ export function CommissionHealthSummary({
             Scoped to {subAccountId ? "this sub-account" : "this workspace"}. Latest recompute:{" "}
             {health.latestRecomputeAt ? <Time value={health.latestRecomputeAt} /> : "none"}
           </p>
+          {canRelease && (
+            <div className="mt-3 flex flex-col items-start gap-1">
+              <button
+                type="button"
+                onClick={releaseAvailable}
+                disabled={pending || health.stalePending === 0}
+                className="rounded-md border border-emerald-500/40 px-3 py-1.5 text-sm text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40"
+              >
+                {pending ? "Releasing..." : "Release eligible entries"}
+              </button>
+              {actionMessage && <p className="text-xs text-emerald-400">{actionMessage}</p>}
+              {actionError && <p className="text-xs text-red-400">{actionError}</p>}
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-3 gap-3 text-right">
           <Metric label="Active" value={health.active} tone="text-zinc-100" />
@@ -133,8 +170,25 @@ async function fetchCommissionHealth(workspaceId: string, subAccountId: string |
   return health;
 }
 
+async function releaseAvailableEntries(workspaceId: string, subAccountId: string | null) {
+  const res = await fetch("/api/trpc/commissions.releaseAvailable?batch=1", {
+    method: "POST",
+    headers: trpcHeaders(workspaceId, subAccountId),
+    body: JSON.stringify({ "0": { json: null } }),
+  });
+  const json = (await res.json()) as TrpcBatchResponse<{ released: number }>;
+  const message = json[0]?.error?.json?.message ?? json[0]?.error?.message;
+  if (!res.ok || message) throw new Error(message ?? `${res.status}: request failed`);
+  const result = json[0]?.result?.data?.json;
+  if (!result) throw new Error("Empty release response");
+  return result;
+}
+
 function trpcHeaders(workspaceId: string, subAccountId: string | null): HeadersInit {
-  const headers: Record<string, string> = { "x-workspace-id": workspaceId };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-workspace-id": workspaceId,
+  };
   if (subAccountId) headers["x-sub-account-id"] = subAccountId;
   return headers;
 }

@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { can } from "@revops/auth/policy";
 import { withTenant, schema } from "@revops/db/client";
 import { EmptyState, Money, PageHeader, Pill, Time } from "@revops/ui";
 import { resolveWorkspaceBySlug } from "~/lib/workspace";
@@ -73,6 +74,7 @@ export default async function CommissionsListPage({
 
   const summary: Record<string, { total: string; count: number }> = {};
   for (const r of result.summary) summary[r.status] = { total: r.total, count: r.count };
+  const canReleaseCommissions = can(ctx.authCtx, "commission:approve");
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -91,6 +93,7 @@ export default async function CommissionsListPage({
       <CommissionHealthSummary
         workspaceId={ctx.workspace.id}
         subAccountId={ctx.membership.subAccountId}
+        canRelease={canReleaseCommissions}
       />
 
       <nav className="flex gap-1 border-b border-zinc-800 text-sm">

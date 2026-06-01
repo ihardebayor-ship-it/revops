@@ -36,4 +36,4 @@ The commissions page includes a ledger health card scoped to the active workspac
 - active entries missing `computedFrom.explanation` metadata;
 - the latest tenant-scoped recompute runs.
 
-If stale pending entries are non-zero, run the release sweep or the test-only `/api/test/commission-release` endpoint in development/staging. If missing explanations are non-zero, recompute affected sales and confirm entries were produced by the current engine. Paid and clawed-back entries are terminal ledger history and must not be rewritten by recompute.
+If stale pending entries are non-zero, use the ledger health card's release action to transition eligible pending entries to available. The action is tenant-scoped and only releases entries where `pending_until` has elapsed. If missing explanations are non-zero, recompute affected sales and confirm entries were produced by the current engine. Paid and clawed-back entries are terminal ledger history and must not be rewritten by recompute.

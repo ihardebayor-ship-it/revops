@@ -91,6 +91,20 @@ describe("commission ops safeguards", () => {
       commissionsSource.indexOf("await inngest.send"),
     );
   });
+
+  it("releases only pending elapsed entries in tenant scope", () => {
+    expect(commissionsSource).toContain("releaseAvailable: authedProcedureWith");
+    expect(commissionsSource).toContain('authedProcedureWith("commission:approve")');
+    expect(commissionsSource).toContain(
+      "eq(schema.commissionEntries.workspaceId, ctx.user.workspaceId)",
+    );
+    expect(commissionsSource).toContain(
+      "eq(schema.commissionEntries.subAccountId, ctx.user.subAccountId)",
+    );
+    expect(commissionsSource).toContain('eq(schema.commissionEntries.status, "pending")');
+    expect(commissionsSource).toContain("lte(schema.commissionEntries.pendingUntil, new Date())");
+    expect(commissionsSource).toContain('status: "available"');
+  });
 });
 
 function findPlainAuthedMutations(source: string): string[] {
