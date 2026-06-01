@@ -7,6 +7,7 @@ const contextSource = readFileSync(new URL("../context.ts", import.meta.url), "u
 const callsSource = readFileSync(new URL("./calls.ts", import.meta.url), "utf8");
 const salesSource = readFileSync(new URL("./sales.ts", import.meta.url), "utf8");
 const webhooksSource = readFileSync(new URL("./webhooks.ts", import.meta.url), "utf8");
+const commissionsSource = readFileSync(new URL("./commissions.ts", import.meta.url), "utf8");
 
 describe("router mutation authorization", () => {
   it("does not define mutations from plain authedProcedure", () => {
@@ -63,6 +64,21 @@ describe("webhook ops safeguards", () => {
     expect(webhooksSource).toContain('if (source === "gohighlevel") return "ghl.webhook.received"');
     expect(webhooksSource).toContain('if (source === "aircall") return "aircall.webhook.received"');
     expect(webhooksSource).toContain('if (source === "fathom") return "fathom.webhook.received"');
+  });
+});
+
+describe("commission ops safeguards", () => {
+  it("keeps ledger health scoped to the selected workspace and sub-account", () => {
+    expect(commissionsSource).toContain("health: authedProcedure.query");
+    expect(commissionsSource).toContain(
+      "eq(schema.commissionEntries.workspaceId, ctx.user.workspaceId)",
+    );
+    expect(commissionsSource).toContain(
+      "eq(schema.commissionEntries.subAccountId, ctx.user.subAccountId)",
+    );
+    expect(commissionsSource).toContain("eq(schema.sales.subAccountId, ctx.user.subAccountId)");
+    expect(commissionsSource).toContain("missingExplanation");
+    expect(commissionsSource).toContain("stalePending");
   });
 });
 

@@ -2,6 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { withTenant, schema } from "@revops/db/client";
 import { EmptyState, Money, PageHeader, Pill, Time } from "@revops/ui";
 import { resolveWorkspaceBySlug } from "~/lib/workspace";
+import { CommissionHealthSummary } from "./commission-health-summary";
 
 const STATUS_VARIANT: Record<string, "info" | "positive" | "won" | "danger" | "neutral"> = {
   pending: "info",
@@ -86,6 +87,11 @@ export default async function CommissionsListPage({
         <SummaryCard label="Paid" value={summary.paid} variant="won" />
         <SummaryCard label="Clawed back" value={summary.clawed_back} variant="danger" />
       </div>
+
+      <CommissionHealthSummary
+        workspaceId={ctx.workspace.id}
+        subAccountId={ctx.membership.subAccountId}
+      />
 
       <nav className="flex gap-1 border-b border-zinc-800 text-sm">
         <FilterTab href={`/${slug}/commissions`} active={!status}>

@@ -26,3 +26,14 @@ The endpoint validates:
 - a paid entry is not rewritten by recompute.
 
 The endpoint temporarily mutates one entry for release and one entry for paid-lock validation, then restores their previous ledger fields. Use only in development/staging/demo environments.
+
+## Ledger Health
+
+The commissions page includes a ledger health card scoped to the active workspace/sub-account. It highlights:
+
+- active non-voided ledger entries;
+- stale pending entries whose `pending_until` has elapsed but have not been released;
+- active entries missing `computedFrom.explanation` metadata;
+- the latest tenant-scoped recompute runs.
+
+If stale pending entries are non-zero, run the release sweep or the test-only `/api/test/commission-release` endpoint in development/staging. If missing explanations are non-zero, recompute affected sales and confirm entries were produced by the current engine. Paid and clawed-back entries are terminal ledger history and must not be rewritten by recompute.

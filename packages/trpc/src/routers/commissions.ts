@@ -97,6 +97,80 @@ export const commissionsRouter = router({
     return out;
   }),
 
+  // Tenant-scoped ops health for the commission ledger. Workspace admins see
+  // the workspace; sub-account users see only their selected sub-account.
+  health: authedProcedure.query(async ({ ctx }) => {
+    if (!ctx.user.workspaceId) throw new TRPCError({ code: "BAD_REQUEST" });
+
+    const entryConditions = [eq(schema.commissionEntries.workspaceId, ctx.user.workspaceId)];
+    const saleConditions = [eq(schema.sales.workspaceId, ctx.user.workspaceId)];
+    if (ctx.user.subAccountId) {
+      entryConditions.push(eq(schema.commissionEntries.subAccountId, ctx.user.subAccountId));
+      saleConditions.push(eq(schema.sales.subAccountId, ctx.user.subAccountId));
+    }
+
+    const [statusRows, [diagnostics], recentRuns] = await Promise.all([
+      ctx.db
+        .select({
+          status: schema.commissionEntries.status,
+          total: sum(schema.commissionEntries.amount),
+          count: sql<number>`count(*)::int`,
+        })
+        .from(schema.commissionEntries)
+        .where(and(...entryConditions))
+        .groupBy(schema.commissionEntries.status),
+      ctx.db
+        .select({
+          stalePending: sql<number>`count(*) filter (where ${schema.commissionEntries.status} = 'pending' and ${schema.commissionEntries.pendingUntil} <= now())::int`,
+          missingExplanation: sql<number>`count(*) filter (where ${schema.commissionEntries.status} <> 'voided' and (${schema.commissionEntries.computedFrom}->'explanation') is null)::int`,
+          active: sql<number>`count(*) filter (where ${schema.commissionEntries.status} <> 'voided')::int`,
+        })
+        .from(schema.commissionEntries)
+        .where(and(...entryConditions)),
+      ctx.db
+        .select({
+          id: schema.commissionRecomputeRuns.id,
+          saleId: schema.commissionRecomputeRuns.saleId,
+          runAt: schema.commissionRecomputeRuns.runAt,
+          entryCount: schema.commissionRecomputeRuns.entryCount,
+          voidedCount: schema.commissionRecomputeRuns.voidedCount,
+          durationMs: schema.commissionRecomputeRuns.durationMs,
+          error: schema.commissionRecomputeRuns.error,
+          triggeredBy: schema.commissionRecomputeRuns.triggeredBy,
+        })
+        .from(schema.commissionRecomputeRuns)
+        .innerJoin(schema.sales, eq(schema.sales.id, schema.commissionRecomputeRuns.saleId))
+        .where(
+          and(
+            eq(schema.commissionRecomputeRuns.workspaceId, ctx.user.workspaceId),
+            ...saleConditions,
+          ),
+        )
+        .orderBy(desc(schema.commissionRecomputeRuns.runAt))
+        .limit(5),
+    ]);
+
+    const statuses: Record<string, { total: string; count: number }> = {
+      pending: { total: "0", count: 0 },
+      available: { total: "0", count: 0 },
+      paid: { total: "0", count: 0 },
+      clawed_back: { total: "0", count: 0 },
+      voided: { total: "0", count: 0 },
+    };
+    for (const row of statusRows) {
+      statuses[row.status] = { total: row.total ?? "0", count: row.count };
+    }
+
+    return {
+      statuses,
+      active: diagnostics?.active ?? 0,
+      stalePending: diagnostics?.stalePending ?? 0,
+      missingExplanation: diagnostics?.missingExplanation ?? 0,
+      recentRuns,
+      latestRecomputeAt: recentRuns[0]?.runAt ?? null,
+    };
+  }),
+
   // Admin-triggered re-run for a single sale.
   recomputeOne: authedProcedureWith("commission:rule:update")
     .input(z.object({ saleId: z.string().uuid() }))
