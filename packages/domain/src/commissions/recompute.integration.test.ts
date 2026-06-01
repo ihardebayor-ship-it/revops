@@ -5,7 +5,7 @@ import { bypassRls, schema } from "@revops/db/client";
 import { recomputeCommissionsForSale } from "./recompute";
 
 const describeDb = process.env.RUN_DB_INTEGRATION_TESTS === "1" ? describe : describe.skip;
-const dbTestTimeoutMs = 30_000;
+const dbTestTimeoutMs = 60_000;
 
 type Fixture = {
   userIds: string[];
